@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% set active_nav = "meals" %}
+
+{% block title %}Meals — Kaori{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Meals</h1>
+    <span class="date-label">{{ target_date }}</span>
+</div>
+
+<!-- Date nav -->
+<div class="date-nav">
+    <a href="/meals?date={{ prev_date }}" class="btn btn-sm">&larr; Prev</a>
+    <span>{{ target_date }}</span>
+    <a href="/meals?date={{ next_date }}" class="btn btn-sm">Next &rarr;</a>
+</div>
+
+<!-- Daily totals -->
+<div class="card compact">
+    <span>Total: <strong>{{ totals.total_cal | int }} kcal</strong> | Protein: <strong>{{ totals.total_protein | int }}g</strong></span>
+</div>
+
+<!-- Add Meal Form -->
+<div class="card" x-data="{ showForm: false }">
+    <button class="btn btn-primary btn-block" @click="showForm = !showForm">+ Add Meal</button>
+    <form x-show="showForm" x-transition method="POST" action="/meals" enctype="multipart/form-data" class="form">
+        <label class="form-label">Date</label>
+        <input type="date" name="meal_date" class="form-input" value="{{ target_date }}">
+
+        <label class="form-label">What did you eat?</label>
+        <textarea name="description" class="form-input" rows="2"
+            placeholder="e.g., 'same breakfast as yesterday', 'a bowl of ramen', 'grilled chicken salad with ranch'"></textarea>
+
+        <label class="form-label">Meal Type</label>
+        <select name="meal_type" class="form-input">
+            <option value="breakfast">Breakfast</option>
+            <option value="lunch">Lunch</option>
+            <option value="dinner">Dinner</option>
+            <option value="snack">Snack</option>
+        </select>
+
+        <label class="form-label">Photo (optional)</label>
+        <input type="file" name="photo" accept="image/*" capture="environment" class="form-input">
+
+        <label class="form-label">Notes</label>
+        <input type="text" name="notes" class="form-input" placeholder="Additional context for the AI">
+
+        <button type="submit" class="btn btn-primary btn-block">Save Meal</button>
+    </form>
+</div>
+
+<!-- Meal list -->
+{% if meals %}
+<div class="card">
+    <div class="list">
+        {% for meal in meals %}
+        {% set processing = meal.analysis_status in ('pending', 'analyzing') %}
+        <a href="/meals/{{ meal.id }}" class="list-item" id="meal-{{ meal.id }}"
+           {% if processing %}
+           hx-get="/meals/{{ meal.id }}/status" hx-trigger="every 3s" hx-swap="outerHTML"
+           {% endif %}>
+            {% if meal.photo_path %}
+            <img src="/photos/{{ meal.photo_path }}" class="list-item-thumb" alt="meal photo">
+            {% endif %}
+            <div class="list-item-content">
+                <span class="list-item-title">
+                    {{ meal.meal_type | capitalize }}
+                    {% if processing %}
+                    <span class="badge analyzing">Analyzing...</span>
+                    {% elif meal.analysis_status == 'failed' %}
+                    <span class="badge failed">Failed</span>
+                    {% elif meal.is_estimated %}
+                    <span class="badge">AI</span>
+                    {% endif %}
+                </span>
+                <span class="list-item-sub">{{ meal.description or ('AI is analyzing your photo...' if processing else '') }}</span>
+            </div>
+            <div class="list-item-right">
+                {% if processing %}
+                <span class="list-item-value spinner-dots">...</span>
+                {% else %}
+                <span class="list-item-value">{{ meal.calories or 0 }} kcal</span>
+                <span class="list-item-sub">P:{{ (meal.protein_g or 0) | int }}g</span>
+                {% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <p class="empty-state">No meals logged for {{ target_date }}</p>
+</div>
+{% endif %}
+{% endblock %}

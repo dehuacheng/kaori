@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% set active_nav = "profile" %}
+
+{% block title %}Profile — Kaori{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Profile</h1>
+</div>
+
+<form method="POST" action="/profile" class="form">
+
+    <div class="card">
+        <h2>Personal Info</h2>
+
+        <label class="form-label">Name</label>
+        <input type="text" name="display_name" class="form-input"
+               value="{{ profile.display_name or '' }}" placeholder="Your name">
+
+        <label class="form-label">Gender</label>
+        <select name="gender" class="form-input">
+            <option value="">—</option>
+            <option value="male" {% if profile.gender == 'male' %}selected{% endif %}>Male</option>
+            <option value="female" {% if profile.gender == 'female' %}selected{% endif %}>Female</option>
+            <option value="other" {% if profile.gender == 'other' %}selected{% endif %}>Other</option>
+        </select>
+
+        <label class="form-label">Date of Birth</label>
+        <input type="date" name="birth_date" class="form-input"
+               value="{{ profile.birth_date or '' }}">
+        {% if profile.age is not none %}
+        <span class="form-hint">Age: {{ profile.age }}</span>
+        {% endif %}
+
+        <label class="form-label">Height (cm)</label>
+        <input type="number" name="height_cm" class="form-input" step="0.1"
+               value="{{ profile.height_cm or '' }}" placeholder="e.g., 175">
+    </div>
+
+    <div class="card">
+        <h2>Nutrition Targets</h2>
+        <p class="form-hint">
+            Targets are computed from your weight, height, age, and gender using the
+            Mifflin-St Jeor equation (sedentary baseline). Adjust the percentage to
+            fine-tune for your metabolism.
+        </p>
+
+        <label class="form-label">Protein (g per kg body weight)</label>
+        <input type="number" name="protein_per_kg" class="form-input" step="0.1"
+               value="{{ profile.protein_per_kg or '' }}" placeholder="1.6">
+
+        <label class="form-label">Carbs (g per kg body weight)</label>
+        <input type="number" name="carbs_per_kg" class="form-input" step="0.1"
+               value="{{ profile.carbs_per_kg or '' }}" placeholder="3.0">
+
+        <label class="form-label">Calorie adjustment (%)</label>
+        <input type="number" name="calorie_adjustment_pct" class="form-input" step="1"
+               value="{{ profile.calorie_adjustment_pct or 0 }}" placeholder="0">
+        <span class="form-hint">0 = estimated TDEE. Negative = deficit, positive = surplus.</span>
+    </div>
+
+    {% if profile.target_calories or profile.target_protein_g %}
+    <div class="card">
+        <h2>Computed Targets</h2>
+        {% if profile.latest_weight_kg %}
+        <p class="form-hint">Based on current weight: {{ profile.latest_weight_kg }}kg</p>
+        {% endif %}
+        <div class="macro-row">
+            {% if profile.bmr %}
+            <div class="macro">
+                <span class="macro-value">{{ profile.bmr }}</span>
+                <span class="macro-label">BMR (kcal)</span>
+            </div>
+            {% endif %}
+            {% if profile.estimated_tdee %}
+            <div class="macro">
+                <span class="macro-value">{{ profile.estimated_tdee }}</span>
+                <span class="macro-label">TDEE (kcal)</span>
+            </div>
+            {% endif %}
+            {% if profile.target_calories %}
+            <div class="macro">
+                <span class="macro-value">{{ profile.target_calories }}</span>
+                <span class="macro-label">Target (kcal)</span>
+            </div>
+            {% endif %}
+        </div>
+        <div class="macro-row">
+            {% if profile.target_protein_g %}
+            <div class="macro">
+                <span class="macro-value">{{ profile.target_protein_g }}g</span>
+                <span class="macro-label">Protein</span>
+            </div>
+            {% endif %}
+            {% if profile.target_carbs_g %}
+            <div class="macro">
+                <span class="macro-value">{{ profile.target_carbs_g }}g</span>
+                <span class="macro-label">Carbs</span>
+            </div>
+            {% endif %}
+        </div>
+        {% if not profile.latest_weight_kg %}
+        <p class="form-hint">Log your weight to see computed targets.</p>
+        {% endif %}
+        {% if not profile.bmr %}
+        <p class="form-hint">Fill in gender, birth date, and height to compute BMR/TDEE.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <h2>LLM Backend</h2>
+        <label class="form-label">Analysis Engine</label>
+        <select name="llm_mode" class="form-input">
+            <option value="claude_cli" {% if profile.llm_mode == 'claude_cli' %}selected{% endif %}>Claude CLI (no API key)</option>
+            <option value="claude_api" {% if profile.llm_mode == 'claude_api' %}selected{% endif %}>Claude API (ANTHROPIC_API_KEY)</option>
+            <option value="codex_cli" {% if profile.llm_mode == 'codex_cli' %}selected{% endif %}>Codex CLI / ChatGPT (codex login)</option>
+        </select>
+        <span class="form-hint">Which LLM to use for meal analysis. Claude CLI uses the claude command. Claude API needs an API key. Codex CLI uses your ChatGPT subscription via codex login.</span>
+    </div>
+
+    <div class="card">
+        <h2>Notes</h2>
+        <label class="form-label">Free-form notes (used as LLM context)</label>
+        <textarea name="notes" class="form-input" rows="4"
+                  placeholder="Anything useful for AI context — dietary restrictions, health conditions, preferences, goals...">{{ profile.notes or '' }}</textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-block">Save Profile</button>
+</form>
+{% endblock %}

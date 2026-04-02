@@ -1,0 +1,39 @@
+{% if et %}
+<div class="card" style="border-left: 3px solid #4cc9f0;"
+     {% if et.status == 'pending' %}
+     hx-get="/workouts/exercises/{{ et.id }}/status"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML"
+     {% endif %}>
+    <h2>Identified Exercise</h2>
+    <div style="display:flex; align-items:center; gap:12px;">
+        {% if et.photo_path %}
+        <img src="/photos/{{ et.photo_path }}"
+             style="width:60px; height:60px; object-fit:cover; border-radius:8px;">
+        {% endif %}
+        <div>
+            <p>
+                <strong>{{ et.name }}</strong>
+                {% if et.category %}
+                <span class="badge">{{ et.category }}</span>
+                {% endif %}
+                {% if et.status == 'pending' %}
+                <span class="badge" style="background:#e9c46a; color:#000;">Identifying...</span>
+                {% elif et.status == 'failed' %}
+                <span class="badge" style="background:#e63946; color:#fff;">Failed</span>
+                {% else %}
+                <span class="badge" style="background:#2d6a4f; color:#fff;">Ready</span>
+                {% endif %}
+            </p>
+            {% if et.notes %}
+            <p class="text-dim">{{ et.notes }}</p>
+            {% endif %}
+            {% if et.status == 'done' %}
+            <p class="text-dim" style="font-size:0.85em; margin-top:4px;">
+                Refresh the page to see it in the list below.
+            </p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}

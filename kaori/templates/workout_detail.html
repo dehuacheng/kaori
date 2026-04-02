@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% set active_nav = "workouts" %}
+
+{% block title %}Workout — Kaori{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h1>Workout — {{ workout.date }}</h1>
+        <a href="/workouts/?d={{ workout.date }}" class="btn btn-sm">&larr; Back</a>
+    </div>
+    {% if workout.notes %}
+    <p class="text-dim">{{ workout.notes }}</p>
+    {% endif %}
+    <div class="text-dim" style="font-size:0.85em; margin-top:4px;">
+        {{ workout.activity_type or 'traditionalStrengthTraining' }}
+        {% if workout.duration_minutes %}
+        &middot; {{ "%.0f" | format(workout.duration_minutes) }} min
+        {% endif %}
+    </div>
+</div>
+
+<!-- Analysis card (if available) -->
+{% if analysis %}
+<div class="card" style="border-left: 3px solid #4cc9f0;">
+    <h2>Workout Analysis</h2>
+    {% if analysis.summary %}
+    <p>{{ analysis.summary }}</p>
+    {% endif %}
+
+    <!-- Metrics row -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(100px, 1fr)); gap:8px; margin:12px 0;">
+        {% if analysis.estimated_calories %}
+        <div style="text-align:center; padding:8px; background:#1a1a2e; border-radius:6px;">
+            <div style="font-size:1.3em; font-weight:bold; color:#4cc9f0;">{{ "%.0f" | format(analysis.estimated_calories) }}</div>
+            <div class="text-dim" style="font-size:0.8em;">kcal</div>
+        </div>
+        {% endif %}
+        {% if analysis.total_volume_kg %}
+        <div style="text-align:center; padding:8px; background:#1a1a2e; border-radius:6px;">
+            <div style="font-size:1.3em; font-weight:bold; color:#4cc9f0;">{{ "%.0f" | format(analysis.total_volume_kg) }}</div>
+            <div class="text-dim" style="font-size:0.8em;">kg volume</div>
+        </div>
+        {% endif %}
+        {% if analysis.total_sets %}
+        <div style="text-align:center; padding:8px; background:#1a1a2e; border-radius:6px;">
+            <div style="font-size:1.3em; font-weight:bold; color:#4cc9f0;">{{ analysis.total_sets }}</div>
+            <div class="text-dim" style="font-size:0.8em;">sets</div>
+        </div>
+        {% endif %}
+        {% if analysis.intensity %}
+        <div style="text-align:center; padding:8px; background:#1a1a2e; border-radius:6px;">
+            <div style="font-size:1.3em; font-weight:bold; color:#4cc9f0;">{{ analysis.intensity | replace('_', ' ') | title }}</div>
+            <div class="text-dim" style="font-size:0.8em;">intensity</div>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if analysis.muscle_groups %}
+    <p style="margin:8px 0;">
+        {% for mg in analysis.muscle_groups %}
+        <span class="badge" style="margin:2px;">{{ mg }}</span>
+        {% endfor %}
+    </p>
+    {% endif %}
+
+    {% if analysis.trainer_notes %}
+    <div style="margin-top:12px; padding:10px; background:#1a1a2e; border-radius:6px;">
+        <strong style="color:#e9c46a;">Trainer Notes</strong>
+        <p style="margin:4px 0 0;">{{ analysis.trainer_notes }}</p>
+    </div>
+    {% endif %}
+
+    {% if analysis.progress_notes %}
+    <div style="margin-top:8px; padding:10px; background:#1a1a2e; border-radius:6px;">
+        <strong style="color:#2d6a4f;">Progress</strong>
+        <p style="margin:4px 0 0;">{{ analysis.progress_notes }}</p>
+    </div>
+    {% endif %}
+
+    {% if analysis.recommendations %}
+    <div style="margin-top:8px; padding:10px; background:#1a1a2e; border-radius:6px;">
+        <strong style="color:#4cc9f0;">Recommendations</strong>
+        <p style="margin:4px 0 0;">{{ analysis.recommendations }}</p>
+    </div>
+    {% endif %}
+</div>
+{% elif workout.summary or workout.calories_burned %}
+<!-- Fallback for legacy summaries without structured analysis -->
+<div class="card" style="border-left: 3px solid #4cc9f0;">
+    <h2>Workout Summary</h2>
+    {% if workout.summary %}
+    <p>{{ workout.summary }}</p>
+    {% endif %}
+    {% if workout.calories_burned %}
+    <p><strong>Estimated calories burned:</strong> {{ "%.0f" | format(workout.calories_burned) }} kcal</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Add Exercise -->
+<div class="card" x-data="{ showForm: false }">
+    <button class="btn btn-primary btn-block" @click="showForm = !showForm">Add Exercise</button>
+    <form x-show="showForm" x-transition method="POST" action="/workouts/{{ workout.id }}/exercises" class="form">
+        <label class="form-label">Exercise Type</label>
+        <select name="exercise_type_id" class="form-input" required>
+            <option value="">Select exercise...</option>
+            {% set ns = namespace(current_cat='') %}
+            {% for et in exercise_types %}
+            {% if et.category != ns.current_cat %}
+            {% if ns.current_cat %}</optgroup>{% endif %}
+            <optgroup label="{{ et.category or 'Other' | title }}">
+            {% set ns.current_cat = et.category %}
+            {% endif %}
+            <option value="{{ et.id }}">{{ et.name }}</option>
+            {% endfor %}
+            {% if exercise_types %}</optgroup>{% endif %}
+        </select>
+        <label class="form-label">Notes</label>
+        <input type="text" name="notes" class="form-input" placeholder="Optional">
+        <button type="submit" class="btn btn-primary btn-block">Add</button>
+    </form>
+</div>
+
+<!-- Exercises -->
+{% for ex in workout.exercises %}
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:1.2em;">{{ category_icons.get(ex.exercise_category, '📋') }}</span>
+            <div>
+                <strong>{{ ex.exercise_name }}</strong>
+                <span class="badge" style="margin-left:6px;">{{ ex.exercise_category or '' }}</span>
+            </div>
+        </div>
+        <form method="POST" action="/workouts/{{ workout.id }}/exercises/{{ ex.id }}/delete"
+              onsubmit="return confirm('Remove this exercise?')" style="margin:0;">
+            <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+        </form>
+    </div>
+    {% if ex.notes %}
+    <p class="text-dim" style="margin-bottom:8px;">{{ ex.notes }}</p>
+    {% endif %}
+
+    <!-- Sets table -->
+    {% if ex.sets %}
+    <table class="data-table">
+        <thead>
+            <tr><th>Set</th><th>Reps</th><th>Weight (kg)</th><th>Duration</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for s in ex.sets %}
+            <tr>
+                <td>{{ s.set_number }}</td>
+                <td>{{ s.reps if s.reps is not none else '-' }}</td>
+                <td>{{ "%.1f" | format(s.weight_kg) if s.weight_kg is not none else '-' }}</td>
+                <td>{{ s.duration_seconds ~ 's' if s.duration_seconds is not none else '-' }}</td>
+                <td>
+                    <form method="POST"
+                          action="/workouts/{{ workout.id }}/exercises/{{ ex.id }}/sets/{{ s.id }}/delete"
+                          onsubmit="return confirm('Delete this set?')" style="margin:0;">
+                        <button type="submit" class="btn btn-sm btn-danger">X</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <!-- Add Set -->
+    <div x-data="{ showSet: false }" style="margin-top:8px;">
+        <button class="btn btn-sm" @click="showSet = !showSet">+ Set</button>
+        <form x-show="showSet" x-transition method="POST"
+              action="/workouts/{{ workout.id }}/exercises/{{ ex.id }}/sets" class="form"
+              style="margin-top:8px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:8px;">
+                <div>
+                    <label class="form-label">Set #</label>
+                    <input type="number" name="set_number" class="form-input" required
+                           value="{{ ex.sets | length + 1 }}" min="1">
+                </div>
+                <div>
+                    <label class="form-label">Reps</label>
+                    <input type="number" name="reps" class="form-input" placeholder="10">
+                </div>
+                <div>
+                    <label class="form-label">Weight (kg)</label>
+                    <input type="number" name="weight_kg" step="0.5" class="form-input" placeholder="60">
+                </div>
+                <div>
+                    <label class="form-label">Duration (s)</label>
+                    <input type="number" name="duration_seconds" class="form-input" placeholder="">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary" style="margin-top:8px;">Save Set</button>
+        </form>
+    </div>
+</div>
+{% endfor %}
+
+{% if not workout.exercises %}
+<div class="card">
+    <p class="empty-state">No exercises yet. Add one above.</p>
+</div>
+{% endif %}
+
+<!-- Summarize workout -->
+{% if workout.exercises %}
+<div class="card">
+    <form method="POST" action="/workouts/{{ workout.id }}/summarize">
+        <button type="submit" class="btn btn-block">Summarize with AI</button>
+    </form>
+    <p class="text-dim" style="font-size:0.85em; margin-top:4px; text-align:center;">
+        Calories, volume analysis, and personal trainer feedback
+    </p>
+</div>
+{% endif %}
+
+<!-- Delete workout -->
+<div class="card" style="margin-top:24px;">
+    <form method="POST" action="/workouts/{{ workout.id }}/delete"
+          onsubmit="return confirm('Delete this entire workout?')">
+        <button type="submit" class="btn btn-danger btn-block">Delete Workout</button>
+    </form>
+</div>
+{% endblock %}

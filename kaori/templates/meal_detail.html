@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% set active_nav = "meals" %}
+
+{% block title %}Meal Detail — Kaori{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ meal.meal_type | capitalize }}</h1>
+    <span class="date-label">{{ meal.date }}</span>
+</div>
+
+{% if meal.photo_path %}
+<div class="card photo-card">
+    <img src="/photos/{{ meal.photo_path }}" class="meal-photo" alt="meal photo">
+</div>
+{% endif %}
+
+<div class="card">
+    <p class="meal-description">{{ meal.description or 'No description' }}</p>
+    {% if meal.is_estimated %}
+    <p class="badge">AI Estimated — edit below to correct</p>
+    {% endif %}
+
+    <form method="POST" action="/meals/{{ meal.id }}/update" class="form">
+        <label class="form-label">Date</label>
+        <input type="date" name="meal_date" class="form-input" value="{{ meal.date }}">
+
+        <label class="form-label">Meal Type</label>
+        <select name="meal_type" class="form-input">
+            {% for t in ['breakfast', 'lunch', 'dinner', 'snack'] %}
+            <option value="{{ t }}" {% if meal.meal_type == t %}selected{% endif %}>{{ t | capitalize }}</option>
+            {% endfor %}
+        </select>
+
+        <label class="form-label">Description</label>
+        <input type="text" name="description" class="form-input" value="{{ meal.description or '' }}">
+
+        <div class="form-grid">
+            <div>
+                <label class="form-label">Calories</label>
+                <input type="number" name="calories" class="form-input" value="{{ meal.calories or '' }}">
+            </div>
+            <div>
+                <label class="form-label">Protein (g)</label>
+                <input type="number" name="protein_g" step="0.1" class="form-input" value="{{ meal.protein_g or '' }}">
+            </div>
+            <div>
+                <label class="form-label">Carbs (g)</label>
+                <input type="number" name="carbs_g" step="0.1" class="form-input" value="{{ meal.carbs_g or '' }}">
+            </div>
+            <div>
+                <label class="form-label">Fat (g)</label>
+                <input type="number" name="fat_g" step="0.1" class="form-input" value="{{ meal.fat_g or '' }}">
+            </div>
+        </div>
+
+        <label class="form-label">Notes</label>
+        <input type="text" name="notes" class="form-input" value="{{ meal.notes or '' }}">
+
+        <input type="hidden" name="reanalyze" value="0">
+        <div class="btn-row">
+            <button type="submit" class="btn btn-primary">Update</button>
+            <button type="submit" class="btn btn-accent" onclick="this.form.reanalyze.value='1'">Update with AI</button>
+        </div>
+    </form>
+</div>
+
+{% if meal.analysis_status in ('pending', 'analyzing') %}
+<div class="card" hx-get="/meals/{{ meal.id }}" hx-trigger="every 3s" hx-select=".content" hx-target=".content" hx-swap="innerHTML">
+    <p class="badge analyzing">Analyzing... this page will update automatically.</p>
+</div>
+{% endif %}
+
+{% if analyses and analyses|length > 1 %}
+<div class="card" x-data="{ showHistory: false }">
+    <button class="btn btn-block" @click="showHistory = !showHistory"
+            x-text="showHistory ? 'Hide Analysis History' : 'Analysis History ({{ analyses|length }} versions)'">
+    </button>
+    <div x-show="showHistory" x-transition style="margin-top: 12px;">
+        {% for a in analyses %}
+        <div class="analysis-version">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="text-dim">{{ a.created_at }}</span>
+                {% if a.is_active %}<span class="badge">Active</span>{% endif %}
+                {% if a.status == 'failed' %}<span class="badge failed">Failed</span>{% endif %}
+                {% if a.status in ('pending', 'analyzing') %}<span class="badge analyzing">Analyzing...</span>{% endif %}
+            </div>
+            {% if a.status == 'done' %}
+            <div style="margin-top: 4px;">{{ a.calories or 0 }} kcal | P:{{ (a.protein_g or 0)|int }}g C:{{ (a.carbs_g or 0)|int }}g F:{{ (a.fat_g or 0)|int }}g</div>
+            <div class="text-dim">{{ a.description or '' }}</div>
+            {% endif %}
+            {% if not a.is_active and a.status == 'done' %}
+            <form method="POST" action="/meals/{{ meal.id }}/analyses/{{ a.id }}/activate" style="margin-top: 6px;">
+                <button type="submit" class="btn btn-sm">Activate this version</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <form method="POST" action="/meals/{{ meal.id }}/delete"
+          onsubmit="return confirm('Delete this meal?')">
+        <button type="submit" class="btn btn-danger btn-block">Delete Meal</button>
+    </form>
+</div>
+
+<a href="/meals?date={{ meal.date }}" class="btn btn-block">&larr; Back to Meals</a>
+{% endblock %}

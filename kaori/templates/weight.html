@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% set active_nav = "weight" %}
+
+{% block title %}Weight — Kaori{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Weight</h1>
+</div>
+
+<!-- Current -->
+<div class="card">
+    {% if latest %}
+    <div class="weight-display">
+        <span class="weight-value">{{ "%.1f" | format(latest) }} kg</span>
+        <span class="weight-label">({{ "%.1f" | format(latest * 2.20462) }} lbs)</span>
+    </div>
+    <div class="weight-stats">
+        <span>7-day avg: {{ "%.1f" | format(avg_7d) }} kg</span>
+        <span>Week change: {{ "%+.1f" | format(delta_week) }} kg</span>
+    </div>
+    {% else %}
+    <p class="empty-state">No weight data yet</p>
+    {% endif %}
+</div>
+
+<!-- Log Weight -->
+<div class="card" x-data="{ showForm: {% if not latest %}true{% else %}false{% endif %} }">
+    <button class="btn btn-primary btn-block" @click="showForm = !showForm">Log Weight</button>
+    <form x-show="showForm" x-transition method="POST" action="/weight" class="form">
+        <label class="form-label">Date</label>
+        <input type="date" name="weight_date" class="form-input" value="{{ today }}">
+        <label class="form-label">Weight (kg)</label>
+        <input type="number" name="weight_kg" step="0.1" class="form-input" required
+               placeholder="e.g., 83.2" value="{{ latest or '' }}">
+        <label class="form-label">Notes</label>
+        <input type="text" name="notes" class="form-input" placeholder="Optional">
+        <button type="submit" class="btn btn-primary btn-block">Save</button>
+    </form>
+</div>
+
+<!-- Chart -->
+{% if weights | length > 1 %}
+<div class="card">
+    <h2>Trend (last {{ weights | length }} days)</h2>
+    <canvas id="weightChart" height="200"></canvas>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('weightChart').getContext('2d');
+        const data = {{ weights | tojson }};
+        const labels = data.map(d => d.date.slice(5));
+        const vals = data.map(d => d.weight_kg);
+        const min = Math.min(...vals) - 1;
+        const max = Math.max(...vals) + 1;
+        const w = ctx.canvas.width;
+        const h = ctx.canvas.height;
+        const pad = 40;
+        ctx.strokeStyle = '#333'; ctx.lineWidth = 0.5;
+        for (let i = 0; i <= 4; i++) {
+            const y = pad + (h - 2 * pad) * i / 4;
+            ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - 10, y); ctx.stroke();
+            ctx.fillStyle = '#888'; ctx.font = '10px monospace';
+            ctx.fillText((max - (max - min) * i / 4).toFixed(1), 2, y + 3);
+        }
+        ctx.strokeStyle = '#4cc9f0'; ctx.lineWidth = 2; ctx.beginPath();
+        data.forEach((d, i) => {
+            const x = pad + (i / (data.length - 1)) * (w - pad - 10);
+            const y = pad + ((max - d.weight_kg) / (max - min)) * (h - 2 * pad);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        ctx.fillStyle = '#4cc9f0';
+        data.forEach((d, i) => {
+            const x = pad + (i / (data.length - 1)) * (w - pad - 10);
+            const y = pad + ((max - d.weight_kg) / (max - min)) * (h - 2 * pad);
+            ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+        });
+        ctx.fillStyle = '#888';
+        const step = Math.max(1, Math.floor(data.length / 7));
+        for (let i = 0; i < data.length; i += step) {
+            const x = pad + (i / (data.length - 1)) * (w - pad - 10);
+            ctx.fillText(labels[i], x - 12, h - 5);
+        }
+    });
+    </script>
+</div>
+{% endif %}
+
+<!-- History table -->
+{% if weights %}
+<div class="card">
+    <h2>History</h2>
+    <table class="data-table">
+        <thead><tr><th>Date</th><th>kg</th><th>lbs</th><th>Notes</th><th></th></tr></thead>
+        <tbody>
+            {% for w in weights | reverse %}
+            <tr x-data="{ editing: false }">
+                <template x-if="!editing">
+                    <td>{{ w.date }} <span class="text-dim">{{ w.created_at[11:16] }}</span></td>
+                </template>
+                <template x-if="!editing">
+                    <td>{{ "%.1f" | format(w.weight_kg) }}</td>
+                </template>
+                <template x-if="!editing">
+                    <td>{{ "%.1f" | format(w.weight_kg * 2.20462) }}</td>
+                </template>
+                <template x-if="!editing">
+                    <td>{{ w.notes or '' }}</td>
+                </template>
+                <template x-if="!editing">
+                    <td>
+                        <button class="btn btn-sm" @click="editing = true">Edit</button>
+                    </td>
+                </template>
+                <template x-if="editing">
+                    <td colspan="5">
+                        <form method="POST" action="/weight/{{ w.id }}/update" class="inline-edit">
+                            <span class="inline-edit-date">{{ w.date }}</span>
+                            <input type="number" name="weight_kg" step="0.1" value="{{ w.weight_kg }}" class="form-input-sm" required>
+                            <input type="text" name="notes" value="{{ w.notes or '' }}" class="form-input-sm" placeholder="Notes">
+                            <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                            <button type="button" class="btn btn-sm" @click="editing = false">Cancel</button>
+                        </form>
+                        <form method="POST" action="/weight/{{ w.id }}/delete" class="inline-delete"
+                              onsubmit="return confirm('Delete this entry?')">
+                            <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                        </form>
+                    </td>
+                </template>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

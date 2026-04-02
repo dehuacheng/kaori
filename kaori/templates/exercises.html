@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% set active_nav = "workouts" %}
+
+{% block title %}Manage Exercises — Kaori{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h1>Manage Exercises</h1>
+        <a href="/workouts" class="btn btn-sm">&larr; Workouts</a>
+    </div>
+    <p class="text-dim" style="margin-top:4px;">
+        Enable exercises to make them available in workout picker.
+    </p>
+</div>
+
+<!-- Identify from Photo -->
+<div class="card" x-data="{ showPhoto: false }">
+    <button class="btn btn-primary btn-block" @click="showPhoto = !showPhoto">
+        Identify from Photo
+    </button>
+    <form x-show="showPhoto" x-transition method="POST" action="/workouts/exercises/identify"
+          enctype="multipart/form-data" class="form">
+        <label class="form-label">Photo of machine/exercise</label>
+        <input type="file" name="photo" accept="image/*" capture="environment" class="form-input" required>
+        <label class="form-label">Hint (optional)</label>
+        <input type="text" name="hint" class="form-input" placeholder="e.g., 'chest machine'">
+        <button type="submit" class="btn btn-primary btn-block">Upload &amp; Identify</button>
+    </form>
+</div>
+
+<!-- Add Custom -->
+<div class="card" x-data="{ showAdd: false }">
+    <button class="btn btn-block" @click="showAdd = !showAdd">Add Custom Exercise</button>
+    <form x-show="showAdd" x-transition method="POST" action="/workouts/exercises/add" class="form">
+        <label class="form-label">Name</label>
+        <input type="text" name="name" class="form-input" required placeholder="e.g., Cable Lateral Raise">
+        <label class="form-label">Category</label>
+        <select name="category" class="form-input">
+            <option value="">— Select —</option>
+            {% for cat in categories %}
+            <option value="{{ cat }}">{{ cat | title }}</option>
+            {% endfor %}
+        </select>
+        <label class="form-label">Notes</label>
+        <input type="text" name="notes" class="form-input" placeholder="Optional">
+        <button type="submit" class="btn btn-primary btn-block">Add</button>
+    </form>
+</div>
+
+<!-- Identification result -->
+{% if identification_result %}
+<div class="card" style="border-left: 3px solid #4cc9f0;"
+     {% if identification_result.status == 'pending' %}
+     hx-get="/workouts/exercises/{{ identification_result.id }}/status"
+     hx-trigger="every 3s"
+     hx-swap="outerHTML"
+     {% endif %}>
+    <h2>Identified Exercise</h2>
+    <div style="display:flex; align-items:center; gap:12px;">
+        {% if identification_result.photo_path %}
+        <img src="/photos/{{ identification_result.photo_path }}"
+             style="width:60px; height:60px; object-fit:cover; border-radius:8px;">
+        {% endif %}
+        <div>
+            <p>
+                <strong>{{ identification_result.name }}</strong>
+                {% if identification_result.category %}
+                <span class="badge">{{ identification_result.category }}</span>
+                {% endif %}
+                {% if identification_result.status == 'pending' %}
+                <span class="badge" style="background:#e9c46a; color:#000;">Identifying...</span>
+                {% elif identification_result.status == 'failed' %}
+                <span class="badge" style="background:#e63946; color:#fff;">Failed</span>
+                {% else %}
+                <span class="badge" style="background:#2d6a4f; color:#fff;">Ready</span>
+                {% endif %}
+            </p>
+            {% if identification_result.notes %}
+            <p class="text-dim">{{ identification_result.notes }}</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Exercise List by Category -->
+{% for cat, types in grouped_types.items() %}
+<div class="card">
+    <h2>{{ category_icons.get(cat, '📋') }} {{ cat | title }}</h2>
+    <table class="data-table">
+        <thead><tr><th></th><th>Exercise</th><th></th><th></th></tr></thead>
+        <tbody>
+            {% for et in types %}
+            <tr style="{% if not et.is_enabled %}opacity: 0.5;{% endif %}">
+                <td style="width:36px; padding:4px;">
+                    {% if et.photo_path %}
+                    <img src="/photos/{{ et.photo_path }}"
+                         style="width:32px; height:32px; object-fit:cover; border-radius:4px;">
+                    {% else %}
+                    <span style="font-size:1.3em;">{{ category_icons.get(et.category, '📋') }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ et.name }}
+                    {% if et.status == 'pending' %}
+                    <span class="badge" style="background:#e9c46a; color:#000; font-size:0.7em;">Identifying...</span>
+                    {% elif et.status == 'failed' %}
+                    <span class="badge" style="background:#e63946; color:#fff; font-size:0.7em;">Failed</span>
+                    {% endif %}
+                    {% if not et.is_standard %}
+                    <span style="color: #4cc9f0; font-size:0.8em;">(custom)</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <form method="POST" action="/workouts/exercises/{{ et.id }}/toggle" style="margin:0;">
+                        {% if et.is_enabled %}
+                        <input type="hidden" name="enable" value="0">
+                        <button type="submit" class="btn btn-sm" style="background:#2d6a4f; color:#fff; min-width:70px;">
+                            On
+                        </button>
+                        {% else %}
+                        <input type="hidden" name="enable" value="1">
+                        <button type="submit" class="btn btn-sm" style="min-width:70px;">
+                            Off
+                        </button>
+                        {% endif %}
+                    </form>
+                </td>
+                <td>
+                    {% if not et.is_standard %}
+                    <form method="POST" action="/workouts/exercises/{{ et.id }}/delete"
+                          onsubmit="return confirm('Delete {{ et.name }}?')" style="margin:0;">
+                        <button type="submit" class="btn btn-sm btn-danger">Del</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endfor %}
+
+<!-- Pending exercises without a category show here -->
+{% if uncategorized_pending %}
+<div class="card">
+    <h2>Identifying...</h2>
+    {% for et in uncategorized_pending %}
+    <div style="display:flex; align-items:center; gap:12px; padding:8px 0;
+                {% if not loop.last %}border-bottom:1px solid #333;{% endif %}"
+         hx-get="/workouts/exercises/{{ et.id }}/status-row"
+         hx-trigger="every 3s"
+         hx-swap="outerHTML">
+        {% if et.photo_path %}
+        <img src="/photos/{{ et.photo_path }}"
+             style="width:40px; height:40px; object-fit:cover; border-radius:6px;">
+        {% endif %}
+        <div>
+            <strong>{{ et.name }}</strong>
+            <span class="badge" style="background:#e9c46a; color:#000;">Identifying...</span>
+            {% if et.notes %}
+            <p class="text-dim" style="margin:2px 0 0;">Hint: {{ et.notes }}</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

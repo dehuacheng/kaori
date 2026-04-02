@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% set active_nav = "dashboard" %}
+
+{% block title %}Dashboard — Kaori{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Today</h1>
+    <span class="date-label">{{ today }}</span>
+</div>
+
+<!-- Calorie Summary -->
+<div class="card">
+    <h2>Calories</h2>
+    {% if profile.target_calories %}
+    <div class="progress-row">
+        <div class="progress-bar">
+            <div class="progress-fill" style="width: {{ [totals.total_cal / profile.target_calories * 100, 100] | min }}%"></div>
+        </div>
+        <span class="progress-text">{{ totals.total_cal | int }} / {{ profile.target_calories }} kcal</span>
+    </div>
+    {% else %}
+    <span class="progress-text">{{ totals.total_cal | int }} kcal</span>
+    <p class="form-hint">Set up your <a href="/profile">profile</a> to see targets.</p>
+    {% endif %}
+    <div class="macro-row">
+        <div class="macro">
+            <span class="macro-value">{{ totals.total_protein | int }}g</span>
+            <span class="macro-label">Protein{% if profile.target_protein_g %} (target: {{ profile.target_protein_g }}g){% endif %}</span>
+        </div>
+        <div class="macro">
+            <span class="macro-value">{{ totals.total_carbs | int }}g</span>
+            <span class="macro-label">Carbs{% if profile.target_carbs_g %} (target: {{ profile.target_carbs_g }}g){% endif %}</span>
+        </div>
+        <div class="macro">
+            <span class="macro-value">{{ totals.total_fat | int }}g</span>
+            <span class="macro-label">Fat</span>
+        </div>
+    </div>
+</div>
+
+<!-- Meals -->
+<div class="card">
+    <div class="card-header">
+        <h2>Meals</h2>
+        <a href="/meals" class="btn btn-sm">View All</a>
+    </div>
+    {% if meals %}
+    <div class="list">
+        {% for meal in meals %}
+        <a href="/meals/{{ meal.id }}" class="list-item">
+            <div class="list-item-content">
+                <span class="list-item-title">
+                    {{ meal.meal_type | capitalize }}
+                    {% if meal.is_estimated %}<span class="badge">AI Est.</span>{% endif %}
+                </span>
+                <span class="list-item-sub">{{ meal.description or 'No description' }}</span>
+            </div>
+            <span class="list-item-value">{{ meal.calories or 0 }} kcal</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state">No meals logged yet today</p>
+    {% endif %}
+    <a href="/meals" class="btn btn-primary btn-block">+ Add Meal</a>
+</div>
+
+<!-- Weight -->
+<div class="card">
+    <div class="card-header">
+        <h2>Weight</h2>
+        <a href="/weight" class="btn btn-sm">History</a>
+    </div>
+    {% if latest_weight %}
+    <div class="weight-display">
+        <span class="weight-value">{{ "%.1f" | format(latest_weight) }} kg</span>
+        <span class="weight-label">({{ "%.1f" | format(latest_weight * 2.20462) }} lbs)</span>
+    </div>
+    {% if weights | length > 1 %}
+    <div class="weight-chart-mini">
+        <canvas id="weightChart" height="60"></canvas>
+    </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('weightChart').getContext('2d');
+        const data = {{ weights | tojson }};
+        if (!data.length) return;
+        const vals = data.map(d => d.weight_kg);
+        const min = Math.min(...vals) - 0.5;
+        const max = Math.max(...vals) + 0.5;
+        const w = ctx.canvas.width;
+        const h = ctx.canvas.height;
+        ctx.strokeStyle = '#4cc9f0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        data.forEach((d, i) => {
+            const x = (i / (data.length - 1)) * w;
+            const y = h - ((d.weight_kg - min) / (max - min)) * h;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+    });
+    </script>
+    {% endif %}
+    {% else %}
+    <p class="empty-state">No weight recorded yet</p>
+    <a href="/weight" class="btn btn-primary btn-block">Log Weight</a>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% set active_nav = "workouts" %}
+
+{% block title %}Workouts — Kaori{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h1>Workouts</h1>
+        <a href="/workouts/exercises/manage" class="btn btn-sm">Manage Exercises</a>
+    </div>
+</div>
+
+<!-- Date navigation -->
+<div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px;">
+    <a href="/workouts/?d={{ prev_date }}" class="btn btn-sm">&larr; Prev</a>
+    <span style="font-weight:600;">{{ target_date }}</span>
+    <a href="/workouts/?d={{ next_date }}" class="btn btn-sm">Next &rarr;</a>
+</div>
+
+<!-- New Workout -->
+<div class="card" x-data="{ showForm: false }">
+    <button class="btn btn-primary btn-block" @click="showForm = !showForm">New Workout</button>
+    <form x-show="showForm" x-transition method="POST" action="/workouts/" class="form">
+        <label class="form-label">Date</label>
+        <input type="date" name="workout_date" class="form-input" value="{{ target_date }}">
+        <label class="form-label">Notes</label>
+        <input type="text" name="notes" class="form-input" placeholder="e.g., Push day, Leg day">
+        <button type="submit" class="btn btn-primary btn-block">Create</button>
+    </form>
+</div>
+
+<!-- Today's Workouts -->
+{% if workouts %}
+{% for w in workouts %}
+<div class="card">
+    <a href="/workouts/{{ w.id }}" style="text-decoration:none; color:inherit;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <strong>Workout #{{ w.id }}</strong>
+                {% if w.notes %}<span class="text-dim"> &mdash; {{ w.notes }}</span>{% endif %}
+            </div>
+            <span class="badge">{{ w.exercise_count }} exercises</span>
+        </div>
+        <div class="text-dim" style="font-size:0.85em; margin-top:4px;">
+            {{ w.created_at[:16] }}
+        </div>
+    </a>
+</div>
+{% endfor %}
+{% else %}
+<div class="card">
+    <p class="empty-state">No workouts on {{ target_date }}</p>
+</div>
+{% endif %}
+{% endblock %}
