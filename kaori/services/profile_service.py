@@ -94,6 +94,16 @@ def format_profile_context(profile: dict) -> str:
         parts.append(f"Daily carbs target: {profile['target_carbs_g']}g")
     if profile.get("notes"):
         parts.append(f"Additional context: {profile['notes']}")
+    # Unit preferences for natural-sounding AI responses
+    unit_parts = []
+    if profile.get("unit_body_weight", "kg") != "kg":
+        unit_parts.append(f"body weight in {profile['unit_body_weight']}")
+    if profile.get("unit_exercise_weight", "kg") != "kg":
+        unit_parts.append(f"exercise weight in {profile['unit_exercise_weight']}")
+    if profile.get("unit_height", "cm") != "cm":
+        unit_parts.append(f"height in {profile['unit_height']}")
+    if unit_parts:
+        parts.append(f"Preferred units: {', '.join(unit_parts)}")
     if not parts:
         return ""
     return "## User Profile\n" + "\n".join(parts)

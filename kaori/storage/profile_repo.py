@@ -16,6 +16,7 @@ async def update(**fields) -> dict:
         "display_name", "height_cm", "gender", "birth_date",
         "protein_per_kg", "carbs_per_kg", "calorie_adjustment_pct",
         "llm_mode", "notes",
+        "unit_body_weight", "unit_height", "unit_exercise_weight",
     }
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:

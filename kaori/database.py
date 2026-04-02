@@ -71,6 +71,9 @@ CREATE TABLE IF NOT EXISTS user_profile (
     llm_mode              TEXT    DEFAULT 'claude_cli'
                                   CHECK(llm_mode IN ('claude_cli','claude_api','codex_cli')),
     notes                 TEXT,
+    unit_body_weight      TEXT    DEFAULT 'kg' CHECK(unit_body_weight IN ('kg','lb')),
+    unit_height           TEXT    DEFAULT 'cm' CHECK(unit_height IN ('cm','in')),
+    unit_exercise_weight  TEXT    DEFAULT 'kg' CHECK(unit_exercise_weight IN ('kg','lb')),
     updated_at            TEXT
 );
 
@@ -213,6 +216,9 @@ _PROFILE_MIGRATIONS = [
     ("carbs_per_kg", "REAL DEFAULT 3.0"),
     ("calorie_adjustment_pct", "REAL DEFAULT 0"),
     ("notes", "TEXT"),
+    ("unit_body_weight", "TEXT DEFAULT 'kg'"),
+    ("unit_height", "TEXT DEFAULT 'cm'"),
+    ("unit_exercise_weight", "TEXT DEFAULT 'kg'"),
 ]
 
 
@@ -315,6 +321,9 @@ async def _migrate_llm_mode_check(db: aiosqlite.Connection):
             llm_mode               TEXT    DEFAULT 'claude_cli'
                                           CHECK(llm_mode IN ('claude_cli','claude_api','codex_cli')),
             notes                  TEXT,
+            unit_body_weight       TEXT    DEFAULT 'kg' CHECK(unit_body_weight IN ('kg','lb')),
+            unit_height            TEXT    DEFAULT 'cm' CHECK(unit_height IN ('cm','in')),
+            unit_exercise_weight   TEXT    DEFAULT 'kg' CHECK(unit_exercise_weight IN ('kg','lb')),
             updated_at             TEXT
         )
     """)
@@ -322,10 +331,15 @@ async def _migrate_llm_mode_check(db: aiosqlite.Connection):
         INSERT INTO _user_profile_new
             (id, display_name, height_cm, gender, birth_date,
              protein_per_kg, carbs_per_kg, calorie_adjustment_pct,
-             llm_mode, notes, updated_at)
+             llm_mode, notes, unit_body_weight, unit_height,
+             unit_exercise_weight, updated_at)
         SELECT id, display_name, height_cm, gender, birth_date,
                protein_per_kg, carbs_per_kg, calorie_adjustment_pct,
-               llm_mode, notes, updated_at
+               llm_mode, notes,
+               COALESCE(unit_body_weight, 'kg'),
+               COALESCE(unit_height, 'cm'),
+               COALESCE(unit_exercise_weight, 'kg'),
+               updated_at
         FROM user_profile
     """)
     await db.execute("DROP TABLE user_profile")
