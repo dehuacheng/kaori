@@ -152,6 +152,11 @@ Existing feature docs: `docs/meals.md`, `docs/weight.md`, `docs/profile.md`, `do
 - Nutrition targets computed dynamically from profile + latest weight (BMR/TDEE), not stored statically
 - Both meals and weight forms expose date pickers for backfilling entries
 
+## README — Bilingual (EN/CN)
+- `README.md` contains both English and Chinese versions using `<details>` toggles.
+- **When updating the README, always update both language sections to keep them in sync.**
+- English is open by default; Chinese is collapsed.
+
 ## Docs
 - Feature docs, design patterns, and decision log live in `docs/`
 - See `docs/PLAN.md` for the index of all documentation
