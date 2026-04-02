@@ -171,6 +171,19 @@ CREATE TABLE IF NOT EXISTS timer_presets (
     created_at   TEXT    DEFAULT (datetime('now'))
 );
 
+-- LLM-generated daily/weekly summaries (cached, retriggerable)
+CREATE TABLE IF NOT EXISTS summaries (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    type         TEXT    NOT NULL CHECK(type IN ('daily', 'weekly')),
+    date         TEXT    NOT NULL,
+    summary_text TEXT    NOT NULL,
+    llm_backend  TEXT,
+    model        TEXT,
+    raw_response TEXT,
+    created_at   TEXT    DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_summaries_type_date ON summaries(type, date DESC);
 CREATE INDEX IF NOT EXISTS idx_meals_date ON meals(date);
 CREATE INDEX IF NOT EXISTS idx_meal_analyses_meal_id ON meal_analyses(meal_id);
 CREATE INDEX IF NOT EXISTS idx_meal_analyses_status ON meal_analyses(status);

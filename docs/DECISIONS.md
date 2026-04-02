@@ -123,6 +123,12 @@
 
 **Outcome:** Added `activity_type`, `duration_minutes`, `calories_burned`, `summary` columns to `workouts` table (via migration). Activity types map to HKWorkoutActivityType enum. Added `POST /api/workouts/{id}/summarize` endpoint that uses LLM to generate a workout summary with calorie estimation based on exercises performed and user's body weight. Added exercise management web page at `/workouts/exercises/manage` with custom exercise creation and photo-based LLM identification. HealthKit stores only aggregate data (calories, duration); Kaori remains source of truth for per-exercise detail. Added `is_enabled` column to `exercise_types` — only enabled exercises appear in workout picker, keeping the selection list manageable. All seeded exercises default to disabled; custom and photo-identified exercises default to enabled. Category icons shown for exercises without photos.
 
+### 2026-04-02 — Notification system (local + LLM daily summary)
+
+**User intent:** Add daily notifications to prompt meal/weight logging. Fixed reminders at configurable times (9am breakfast+weight, 1pm lunch, 8pm dinner). LLM-generated daily summary at 9:30pm that feeds today's meals/macros/streak into the LLM for a personalized notification. Weekly weight trend on Sundays. Each notification type individually toggleable with custom time picker.
+
+**Outcome:** Backend: added `GET /api/summary/daily` (LLM-generated), `GET /api/summary/weekly-weight` (arithmetic), `GET /api/summary/streak`. iOS: local notifications via `UNUserNotificationCenter`, `BGAppRefreshTask` for pre-fetching LLM summary before notification fires (falls back to generic text if backend unreachable). Full notification settings UI with master toggle, per-type toggles, and time pickers. No APNs needed.
+
 ### 2026-04-01 — Add Codex CLI (OpenAI/ChatGPT) LLM backend
 
 **User intent:** Explore using OpenAI's Codex CLI (`codex exec`) as an alternative LLM backend for meal analysis, alongside existing Claude backends. Start with Codex CLI only (uses ChatGPT subscription, no API key needed). Backend selection should be per-request from the user profile's `llm_mode` field, not just env var at startup. Test in web UI first, iOS settings toggle deferred.

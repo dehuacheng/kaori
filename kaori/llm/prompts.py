@@ -67,6 +67,65 @@ def build_photo_analysis_prompt(context: str, description: str | None = None,
 
 
 # ---------------------------------------------------------------------------
+# Daily summary (notification)
+# ---------------------------------------------------------------------------
+
+def build_daily_summary_prompt(context: str, language: str = "en") -> str:
+    """Build prompt for generating a short daily health summary for a notification."""
+    lang_hint = "Respond in Chinese." if language.startswith("zh") else "Respond in English."
+    return (
+        "Generate a brief, encouraging daily health summary for a mobile push notification. "
+        "Maximum 140 characters. Be specific about today's numbers. "
+        "If there's a notable streak, mention it. Be warm but concise. "
+        f"{lang_hint}\n\n"
+        f"{context}\n\n"
+        "Return ONLY the notification text, nothing else. No quotes, no JSON, no markdown."
+    )
+
+
+def build_daily_detail_prompt(context: str, language: str = "en") -> str:
+    """Build prompt for a concise end-of-day health report with sections."""
+    lang_hint = "Respond in Chinese." if language.startswith("zh") else "Respond in English."
+    return (
+        "You are a personal health assistant with a warm, playful personality. "
+        "Write a concise end-of-day report. "
+        f"{lang_hint}\n\n"
+        f"{context}\n\n"
+        "FORMAT: Start with 1-2 sentences of playful commentary summarizing the day "
+        "(conversational tone, can use light humor). "
+        "Then use ## section headers. Keep each section to 1-3 sentences. "
+        "Skip a section entirely if no relevant data.\n\n"
+        "## Nutrition\nCalories and protein vs targets. Note gaps.\n\n"
+        "## Activity\nWorkout summary if any.\n\n"
+        "## Weight\nTrend direction, one line.\n\n"
+        "## Tips\n1-2 specific tips for tomorrow.\n\n"
+        "Total ~100-150 words. Use actual numbers. Use **bold** for key numbers. "
+        "Return ONLY the markdown, nothing else."
+    )
+
+
+def build_weekly_detail_prompt(context: str, language: str = "en") -> str:
+    """Build prompt for a weekly health report with playful commentary."""
+    lang_hint = "Respond in Chinese." if language.startswith("zh") else "Respond in English."
+    return (
+        "You are a personal health assistant with a warm, playful personality. "
+        "Write a weekly health report. "
+        f"{lang_hint}\n\n"
+        f"{context}\n\n"
+        "FORMAT: Start with 1-2 sentences of playful commentary about the week "
+        "(conversational, light humor welcome). "
+        "Then use ## section headers. Keep each section to 2-4 sentences. "
+        "Skip sections with no data.\n\n"
+        "## Weight Trend\nStart/end weight, delta. One-line assessment.\n\n"
+        "## Nutrition\nAvg daily calories/protein. Consistency.\n\n"
+        "## Training\nWorkout count, highlights.\n\n"
+        "## Plan\n2-3 specific goals for next week.\n\n"
+        "Total ~150-200 words. Use actual numbers. Use **bold** for key numbers. "
+        "Return ONLY the markdown, nothing else."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Exercise identification
 # ---------------------------------------------------------------------------
 

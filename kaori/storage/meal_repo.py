@@ -110,6 +110,28 @@ async def update(meal_id: int, **fields) -> str | None:
         await db.close()
 
 
+async def get_logging_streak() -> int:
+    """Count consecutive days with at least 1 meal, ending at the most recent date."""
+    db = await get_db()
+    try:
+        cursor = await db.execute("""
+            WITH dated AS (
+                SELECT DISTINCT date FROM meals ORDER BY date DESC
+            ),
+            numbered AS (
+                SELECT date,
+                       julianday(date) - ROW_NUMBER() OVER (ORDER BY date DESC) AS grp
+                FROM dated
+            )
+            SELECT COUNT(*) as streak FROM numbered
+            WHERE grp = (SELECT grp FROM numbered LIMIT 1)
+        """)
+        row = await cursor.fetchone()
+        return row["streak"] if row else 0
+    finally:
+        await db.close()
+
+
 async def delete(meal_id: int) -> str | None:
     db = await get_db()
     try:
