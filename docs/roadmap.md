@@ -20,18 +20,33 @@ See individual feature docs: [meals.md](meals.md), [weight.md](weight.md), [prof
 - Daily AI health brief
 
 ## Phase 5: Additional Data Domains
-- Exercise tracking (structured logging)
+- Exercise tracking (structured logging) ✅
 - Symptom logging (migraine-specific)
 - Diary / mood / energy tracking
 - Calendar integration
 - Todo list
 
-## Phase 6: Medical Records + HealthKit
+## Phase 6: Feed-Based UI Revamp
+- Unified "news feed" timeline for all daily entries (meals, weight, workouts, diary)
+- Redesigned "add item" flow — feels like posting to the feed
+- **Scenes** — curated toolkits for specific activities (gym workout, deep focus study, etc.)
+- Each scene provides contextual mini-tools and quick actions
+
+## Phase 7: Personal Document Vault
+- Upload and retrieve personal documents (passport, IDs, etc.)
+- Password/Face ID protection
+- Dual-mode design: full LLM assistant mode (rich querying) vs. static presentation mode (maximum security)
+- User chooses mode based on their LLM setup and risk tolerance
+
+## Phase 8: Medical Record Keeper
+- Store exam results, lab work, and health records
+- AI-powered PCP, nutritionist, and personal trainer — all in one
 - HealthKit XML export parser
-- Medical record PDF upload + structured extraction
 - Lab result trending, medication adherence
 
-## Phase 7: Local LLM + Polish
-- Qwen2.5-VL via MLX for free meal photo analysis
-- Offline capability, data export, dark mode polish
-- Data encryption and cloud storage options
+## Phase 9: Personal AI Assistant (Long-Term Vision)
+- Full personal AI assistant (Kaori by default — user can customize the name)
+- Comprehensive care across all aspects of life
+- Core principle: **your data stays in your hands** — self-host or choose a trusted LLM provider
+- Local LLM support (e.g., Qwen2.5-VL via MLX for free on-device analysis)
+- App is completely free and open-source — fork and vibe-code it to make it yours

@@ -65,6 +65,13 @@ KAORI_TEST_MODE=1 uvicorn kaori.main:app --reload --host 0.0.0.0 --port 8001
 
 The companion iOS app is at [kaori-ios](https://github.com/dehuacheng/kaori-ios).
 
+### Roadmap
+
+- **Personal Document Vault** — Upload and retrieve personal documents (passport, IDs, etc.) with password/Face ID protection. Design in progress: considering both a full LLM assistant mode for rich querying and a static presentation mode for maximum security. May offer both and let users choose based on their LLM setup and risk tolerance.
+- **Medical Record Keeper** — Store exam results, lab work, and health records. Acts as your AI-powered PCP, nutritionist, and personal trainer — all in one place.
+- **Feed-Based UI Revamp** — A unified "news feed" timeline for all daily entries: meals, weight, workouts, and eventually diary entries. The "add item" flow will feel like posting to the feed. Introducing **Scenes** (e.g., gym workout, deep focus study) — curated toolkits tailored to specific activities.
+- **Personal AI Assistant (Long-Term Vision)** — The ultimate goal: a personal AI assistant (Kaori by default — pick your own name) that provides comprehensive care across all aspects of your life. Core design principle: **your data stays in your hands**. Self-host or choose a trusted LLM provider. Everything else in the app is completely free and open-source — fork it and vibe-code it to make it yours.
+
 </details>
 
 <details>
@@ -129,6 +136,13 @@ KAORI_TEST_MODE=1 uvicorn kaori.main:app --reload --host 0.0.0.0 --port 8001
 ### iOS 应用
 
 配套 iOS 应用在 [kaori-ios](https://github.com/dehuacheng/kaori-ios)。
+
+### 未来规划
+
+- **个人文档保险库** — 上传和检索个人文档（护照、身份证等），通过密码/Face ID 保护。设计仍在进行中：考虑提供完整的 LLM 助手模式（功能更丰富）和静态展示模式（安全性最高），可能两者都提供，让用户根据自己的 LLM 配置和风险偏好自行选择。
+- **医疗记录管理** — 存储体检报告、化验结果等健康档案。充当你的 AI 全科医生、营养师和私人教练 — 一站式服务。
+- **信息流式 UI 重构** — 统一的"信息流"时间线，整合所有每日记录：饮食、体重、健身，未来还会加入日记。"添加记录"的交互将类似于在信息流中发帖。引入**场景**概念（如健身训练、深度专注学习等），为不同活动提供定制化的小工具集。
+- **个人 AI 助手（终极愿景）** — 最终目标：一个个人 AI 助手（默认叫 Kaori，你也可以自定义名字），全方位照顾你生活的各个方面。核心设计原则：**数据掌握在自己手中**。你需要自行部署或选择信任的 LLM 服务商。应用的其他部分完全免费开源 — 随意 fork，用 AI 编程定制成你自己的版本。
 
 </details>
 
