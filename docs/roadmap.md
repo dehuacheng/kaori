@@ -9,15 +9,17 @@ See individual feature docs: [meals.md](meals.md), [weight.md](weight.md), [prof
 - HTTPS, PWA install from Safari
 - Test full mobile flow
 
-## Phase 3: Proactive Notifications (requires iOS frontend)
-- Daily meal reminders
-- Weight tracking reminders
-- Anomaly alerts (missed meals, weight spikes)
+## Phase 3: Proactive Notifications ✅
+- Daily meal reminders (breakfast, lunch, dinner at configurable times) ✅
+- Weight tracking reminders (morning check-in) ✅
+- LLM-generated daily and weekly health summaries ✅
+- Inline dashboard display with collapsible sections ✅
+- Anomaly alerts (missed meals, weight spikes) — deferred
 
 ## Phase 4: AI Coaching
 - Chat interface with roles (trainer, nutritionist, doctor, therapist)
 - Context builder + de-identification pipeline
-- Daily AI health brief
+- Daily AI health brief ✅ (via daily/weekly summary)
 
 ## Phase 5: Additional Data Domains
 - Exercise tracking (structured logging) ✅
