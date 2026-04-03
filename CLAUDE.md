@@ -141,10 +141,35 @@ Each feature doc is tracked with a version in `docs/PLAN.md`:
 
 Existing feature docs: `docs/meals.md`, `docs/weight.md`, `docs/profile.md`, `docs/patterns.md`, `docs/roadmap.md`.
 
+## Photo Handling
+- All uploaded photos are resized to **max 1600px** and saved as **JPEG quality 85** in `save_photo()` (`storage/file_store.py`)
+- Handles HEIC→JPEG, PNG→JPEG conversion (convert to RGB first)
+- Photos stored in `data/photos/{YYYY}/{MM}/{DD}/{uuid}.jpg`
+- Served as static files at `/photos/{path}`
+- For LLM analysis, photos are further resized to 1024px / quality 80 via `get_resized_image_bytes()`
+- Migration script: `scripts/compress_photos.py` (with `--dry-run` flag, respects `KAORI_TEST_MODE`)
+
+## Unit Preferences
+- Three independent unit settings on `user_profile`:
+  - `unit_body_weight`: `kg` or `lb` (default: `kg`)
+  - `unit_height`: `cm` or `in` (default: `cm`)
+  - `unit_exercise_weight`: `kg` or `lb` (default: `kg`)
+- **DB always stores metric** (kg, cm). Conversion happens at the client display/input layer.
+- Unit preferences are included in LLM context (`format_profile_context()`) so AI summaries use user's preferred units.
+- Profile API (`GET/PUT /api/profile`) exposes all three fields.
+
+## AI Summaries
+- `GET /api/summary/daily-detail?date=YYYY-MM-DD` — retrieve existing daily summary
+- `POST /api/summary/daily-detail?language=en/zh&date=YYYY-MM-DD` — generate/regenerate
+- `GET /api/summary/weekly-detail` — retrieve weekly summary
+- `POST /api/summary/weekly-detail?language=en/zh` — generate/regenerate
+- Summaries stored in `summaries` table, LLM-generated markdown with `## Section` headers
+- iOS prefetches via background task 1 hour before notification time
+
 ## Conventions
 - Python 3.12+, type hints, async where beneficial
 - Pydantic models for request/response validation
-- Dates stored as `YYYY-MM-DD` text in SQLite, timestamps as ISO-8601
+- Dates stored as `YYYY-MM-DD` text in SQLite, timestamps as UTC via `datetime('now')`
 - Meal analysis (photo or text) runs in background (asyncio.create_task), UI polls via HTMX
 - Text-only meals are analyzed with historical context (user profile + habit summary + recent meals)
 - Meal history compaction: `POST /api/meals/compact-history` to compress older meals into a summary
