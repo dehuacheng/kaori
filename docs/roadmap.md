@@ -28,11 +28,17 @@ See individual feature docs: [meals.md](meals.md), [weight.md](weight.md), [prof
 - Calendar integration
 - Todo list
 
-## Phase 6: Feed-Based UI Revamp
-- Unified "news feed" timeline for all daily entries (meals, weight, workouts, diary)
-- Redesigned "add item" flow — feels like posting to the feed
-- **Scenes** — curated toolkits for specific activities (gym workout, deep focus study, etc.)
-- Each scene provides contextual mini-tools and quick actions
+## Phase 6: Feed-Based UI Revamp ✅
+- Unified "news feed" timeline for all daily entries (meals, weight, workouts) ✅
+- Multi-day infinite scroll with day headers ✅
+- Rich feed cards (Apple Health–inspired dark aesthetic) ✅
+- Daily nutrition progress bars (calories, protein, carbs, fat) ✅
+- AI daily/weekly summary cards with swipe-to-regenerate ✅
+- iOS 18 Control Center–style "+" add menu (meal, weight, workout) ✅
+- Analytics view (calorie chart, weight chart) as sheet from feed ✅
+- 3-tab layout: Home (feed) | + (add) | More (data, tools, profile, settings) ✅
+- Swipe-to-delete on all feed items, tap to navigate to detail views ✅
+- **Scenes** — curated toolkits for specific activities — deferred
 
 ## Phase 7: Personal Document Vault
 - Upload and retrieve personal documents (passport, IDs, etc.)

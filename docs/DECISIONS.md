@@ -134,3 +134,9 @@
 **User intent:** Explore using OpenAI's Codex CLI (`codex exec`) as an alternative LLM backend for meal analysis, alongside existing Claude backends. Start with Codex CLI only (uses ChatGPT subscription, no API key needed). Backend selection should be per-request from the user profile's `llm_mode` field, not just env var at startup. Test in web UI first, iOS settings toggle deferred.
 
 **Outcome:** Added `CodexCLIBackend` in `kaori/llm/codex_cli.py` — subprocess to `codex exec --json --ephemeral --skip-git-repo-check`, parses NDJSON output. Updated factory `get_llm_backend()` to accept optional `mode` parameter; services read `llm_mode` from profile and pass it. Updated DB CHECK constraint with migration. Exposed `llm_mode` in profile API (`ProfileUpdate`) and web UI (dropdown selector on profile page). Three backends: `claude_cli`, `claude_api`, `codex_cli`.
+
+### 2026-04-02 — Feed-based UI revamp (pulled ahead from Phase 6)
+
+**User intent:** Transform the iOS app from a 4-tab dashboard layout into a feed-based experience. Three tabs: (1) Home feed — multi-day infinite scroll timeline of all daily entries (meals, weight, workouts, AI summaries) as rich cards, with an expanding FAB for quick adding; (2) Management hub — houses all current views (meals, weight, gym, profile, settings) as a menu list; (3) Tools — rest timer entry point, extensible. Data merging is client-side (no new backend endpoints). This redesign is pulled ahead of Phase 5 (diary/todo) since the feed architecture naturally accommodates future data types.
+
+**Outcome:** Design spec finalized. Implementation in 4 phases: A) Tab restructure, B) Feed foundation + FeedStore, C) Rich feed cards, D) Expanding FAB. All existing views preserved and accessible from Tab 2.
