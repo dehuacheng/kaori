@@ -186,6 +186,77 @@ CREATE TABLE IF NOT EXISTS summaries (
     created_at   TEXT    DEFAULT (datetime('now'))
 );
 
+-- Financial accounts (general: brokerage, credit card, bank)
+CREATE TABLE IF NOT EXISTS financial_accounts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    account_type    TEXT NOT NULL CHECK(account_type IN ('brokerage','credit_card','bank')),
+    institution     TEXT NOT NULL,
+    sync_method     TEXT NOT NULL DEFAULT 'manual' CHECK(sync_method IN ('api','plaid','manual')),
+    api_credentials TEXT,
+    last_synced_at  TEXT,
+    notes           TEXT,
+    created_at      TEXT DEFAULT (datetime('now')),
+    updated_at      TEXT DEFAULT (datetime('now'))
+);
+
+-- Brokerage holdings (for account_type='brokerage')
+CREATE TABLE IF NOT EXISTS portfolio_holdings (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id  INTEGER NOT NULL REFERENCES financial_accounts(id) ON DELETE CASCADE,
+    ticker      TEXT NOT NULL,
+    shares      REAL NOT NULL,
+    cost_basis  REAL,
+    notes       TEXT,
+    created_at  TEXT DEFAULT (datetime('now')),
+    updated_at  TEXT DEFAULT (datetime('now'))
+);
+
+-- LLM-extracted data from screenshots/PDFs (append-only)
+CREATE TABLE IF NOT EXISTS financial_import_analyses (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id      INTEGER NOT NULL REFERENCES financial_accounts(id) ON DELETE CASCADE,
+    import_type     TEXT NOT NULL CHECK(import_type IN ('screenshot','pdf')),
+    status          TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','analyzing','done','failed')),
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    file_path       TEXT,
+    extracted_json  TEXT,
+    llm_backend     TEXT,
+    model           TEXT,
+    raw_response    TEXT,
+    error_message   TEXT,
+    created_at      TEXT DEFAULT (datetime('now')),
+    completed_at    TEXT
+);
+
+-- Daily portfolio snapshots (for brokerage accounts)
+CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    date        TEXT NOT NULL,
+    account_id  INTEGER REFERENCES financial_accounts(id) ON DELETE CASCADE,
+    total_value     REAL NOT NULL,
+    total_cost      REAL,
+    day_change      REAL,
+    day_change_pct  REAL,
+    holdings_json   TEXT,
+    created_at      TEXT DEFAULT (datetime('now'))
+);
+
+-- Stock price cache
+CREATE TABLE IF NOT EXISTS stock_prices (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker          TEXT NOT NULL,
+    price           REAL NOT NULL,
+    previous_close  REAL,
+    fetched_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    source          TEXT DEFAULT 'yfinance'
+);
+
+CREATE INDEX IF NOT EXISTS idx_financial_accounts_type ON financial_accounts(account_type);
+CREATE INDEX IF NOT EXISTS idx_portfolio_holdings_account ON portfolio_holdings(account_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_snapshots_unique ON portfolio_snapshots(date, account_id);
+CREATE INDEX IF NOT EXISTS idx_stock_prices_ticker ON stock_prices(ticker, fetched_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_summaries_type_date ON summaries(type, date DESC);
 CREATE INDEX IF NOT EXISTS idx_meals_date ON meals(date);
 CREATE INDEX IF NOT EXISTS idx_meal_analyses_meal_id ON meal_analyses(meal_id);

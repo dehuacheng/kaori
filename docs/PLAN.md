@@ -37,7 +37,8 @@ Frontend (any)                       Backend (kaori/ package)
 | [weight.md](weight.md) | 0.1.0 | In Progress | Weight tracking, trends, body measurements |
 | [profile.md](profile.md) | 0.1.0 | In Progress | User profile, targets, personal info, free-form notes |
 | [workout.md](workout.md) | 0.2.0 | In Progress | Workout tracking — exercises, sets, reps, weights, timer presets, Apple Health, LLM summary |
-| [roadmap.md](roadmap.md) | — | Reference | Phased roadmap (Phases 2–7) |
+| [finance.md](finance.md) | 0.1.0 | In Progress | Financial accounts — brokerage portfolio tracking, screenshot/PDF import, daily feed card |
+| [roadmap.md](roadmap.md) | — | Reference | Phased roadmap (Phases 2–9) |
 
 ### Version scheme
 - **0.x.y** — in development, not yet stable

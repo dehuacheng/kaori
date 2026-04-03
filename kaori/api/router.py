@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from kaori.api import meals, weight, profile, test_mode, exercise_types, workout, timer_presets, summary
+from kaori.api import meals, weight, profile, test_mode, exercise_types, workout, timer_presets, summary, finance
 from kaori.api.auth import verify_token
 from kaori.config import TEST_MODE
 
@@ -23,3 +23,4 @@ api_router.include_router(exercise_types.router)
 api_router.include_router(workout.router)
 api_router.include_router(timer_presets.router)
 api_router.include_router(summary.router)
+api_router.include_router(finance.router)

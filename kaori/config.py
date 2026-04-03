@@ -14,13 +14,16 @@ TEST_MODE = os.environ.get("KAORI_TEST_MODE", "").lower() in ("1", "true", "yes"
 if TEST_MODE:
     DB_PATH = DATA_DIR / "kaori_test.db"
     PHOTOS_DIR = DATA_DIR / "photos_test"
+    STATEMENTS_DIR = DATA_DIR / "statements_test"
 else:
     DB_PATH = DATA_DIR / "kaori.db"
     PHOTOS_DIR = DATA_DIR / "photos"
+    STATEMENTS_DIR = DATA_DIR / "statements"
 
 # Ensure directories exist
 DATA_DIR.mkdir(exist_ok=True)
 PHOTOS_DIR.mkdir(exist_ok=True)
+STATEMENTS_DIR.mkdir(exist_ok=True)
 
 # Auth (single-user, Tailscale-gated)
 API_TOKEN = os.environ.get("KAORI_TOKEN", "dev-token")

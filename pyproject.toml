@@ -18,6 +18,7 @@ dependencies = [
     "pillow-heif>=1.0",
     "python-multipart>=0.0.18",
     "aiosqlite>=0.21",
+    "yfinance>=0.2",
 ]
 
 [project.optional-dependencies]

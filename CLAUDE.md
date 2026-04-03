@@ -8,7 +8,7 @@ Kaori is a personal AI-powered life management app. Codename "Kaori" — not lim
 ```
 kaori/                  # Backend Python package
   models/               ← Pydantic data contracts (shared across layers)
-    meal.py, weight.py, llm.py
+    meal.py, weight.py, finance.py, llm.py
 
   storage/              ← Data persistence (DB repos + file storage)
     meal_repo.py            Raw meal CRUD
@@ -18,6 +18,11 @@ kaori/                  # Backend Python package
     weight_repo.py          Weight CRUD
     profile_repo.py         User profile CRUD
     file_store.py           Photo file management
+    financial_account_repo.py  Financial account CRUD
+    portfolio_holding_repo.py  Brokerage holdings CRUD + merge
+    portfolio_snapshot_repo.py Daily portfolio snapshots
+    stock_price_repo.py     Stock price cache
+    financial_import_repo.py Screenshot/PDF import analysis
 
   llm/                  ← LLM abstraction layer
     base.py                 LLMBackend ABC (the interface)
@@ -28,11 +33,14 @@ kaori/                  # Backend Python package
   services/             ← Business logic (orchestrates storage + llm)
     meal_service.py         Meal operations + analysis orchestration
     weight_service.py       Weight operations + trends
+    portfolio_service.py    Financial accounts + portfolio summary
+    stock_price_service.py  Stock price fetching + caching
+    account_sync/           Brokerage API connectors (Schwab, Moomoo stubs)
     profile_service.py      Profile CRUD + LLM context formatting
 
   api/                  ← JSON API endpoints at /api/*
     router.py               Aggregates all API sub-routers
-    meals.py, weight.py, profile.py, test_mode.py
+    meals.py, weight.py, profile.py, finance.py, test_mode.py
 
   web/                  ← HTML pages (barebone testing frontend)
     router.py               Aggregates all web sub-routers
@@ -139,7 +147,7 @@ Each feature doc is tracked with a version in `docs/PLAN.md`:
 - Bump **minor** (0.x.0) for new capabilities; bump **patch** (0.0.x) for fixes/refinements
 - When making changes to a feature, bump its version in the PLAN.md table and note what changed in the feature doc
 
-Existing feature docs: `docs/meals.md`, `docs/weight.md`, `docs/profile.md`, `docs/patterns.md`, `docs/roadmap.md`.
+Existing feature docs: `docs/meals.md`, `docs/weight.md`, `docs/profile.md`, `docs/workout.md`, `docs/finance.md`, `docs/patterns.md`, `docs/roadmap.md`.
 
 ## Photo Handling
 - All uploaded photos are resized to **max 1600px** and saved as **JPEG quality 85** in `save_photo()` (`storage/file_store.py`)

@@ -40,6 +40,16 @@ See individual feature docs: [meals.md](meals.md), [weight.md](weight.md), [prof
 - Swipe-to-delete on all feed items, tap to navigate to detail views ✅
 - **Scenes** — curated toolkits for specific activities — deferred
 
+## Phase 6.5: Financial Accounts ✅
+- Brokerage portfolio tracking (Schwab, Fidelity, Moomoo) ✅
+- Daily portfolio change feed card (live for today, frozen for past) ✅
+- Screenshot/PDF + LLM holdings extraction ✅
+- Account management in More > Data > Finance ✅
+- Stock price caching via yfinance ✅
+- Daily snapshot system (lazy + manual trigger) ✅
+- Institution connector framework (Schwab API, Moomoo API stubs) ✅
+- General financial_accounts model for future credit card/bank support ✅
+
 ## Phase 7: Personal Document Vault
 - Upload and retrieve personal documents (passport, IDs, etc.)
 - Password/Face ID protection

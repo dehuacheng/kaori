@@ -57,6 +57,12 @@ class CodexCLIBackend(LLMBackend):
     async def analyze_image(self, image_path: str, prompt: str, *, model: str = "sonnet") -> LLMResponse:
         return await self._run(prompt, image_path=image_path)
 
+    async def analyze_images(self, images: list[tuple[bytes, str]], prompt: str, *, model: str = "sonnet", thinking: bool = True) -> LLMResponse:
+        raise LLMError("Multi-image analysis not supported by Codex CLI backend")
+
+    async def analyze_document(self, document_data: bytes, prompt: str, *, media_type: str = "application/pdf", model: str = "sonnet", thinking: bool = True) -> LLMResponse:
+        raise LLMError("Document analysis not supported by Codex CLI backend")
+
 
 def _parse_ndjson(output: str) -> tuple[str, dict | None]:
     """Parse NDJSON event stream from codex exec --json.

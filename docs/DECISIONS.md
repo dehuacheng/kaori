@@ -140,3 +140,9 @@
 **User intent:** Transform the iOS app from a 4-tab dashboard layout into a feed-based experience. Three tabs: (1) Home feed — multi-day infinite scroll timeline of all daily entries (meals, weight, workouts, AI summaries) as rich cards, with an expanding FAB for quick adding; (2) Management hub — houses all current views (meals, weight, gym, profile, settings) as a menu list; (3) Tools — rest timer entry point, extensible. Data merging is client-side (no new backend endpoints). This redesign is pulled ahead of Phase 5 (diary/todo) since the feed architecture naturally accommodates future data types.
 
 **Outcome:** Design spec finalized. Implementation in 4 phases: A) Tab restructure, B) Feed foundation + FeedStore, C) Rich feed cards, D) Expanding FAB. All existing views preserved and accessible from Tab 2.
+
+### 2026-04-03 — Financial accounts and portfolio tracking
+
+**User intent:** Track brokerage holdings across Schwab, Fidelity, and Moomoo accounts. Import holdings via screenshot or PDF (LLM extracts positions). Show daily portfolio change card on the feed (live for today, frozen snapshots for past days). Manage accounts under More > Data > Finance. Design should be general enough to later add credit card (Citi/Chase/Amex) and bank account tracking. Use direct broker APIs (Schwab, Moomoo) where free, Plaid as future option for banks/cards, screenshot/PDF + LLM as universal fallback.
+
+**Outcome:** Implemented general `financial_accounts` table supporting brokerage/credit_card/bank types. Backend: 6 new tables, portfolio service with yfinance price caching, LLM holdings extraction from multi-photo screenshots, daily snapshot system. iOS: portfolio feed card with background loading and 60s auto-refresh, account management views, multi-photo import with editable review. Broker API connectors (Schwab, Moomoo) stubbed with `AccountConnector` ABC for future implementation.

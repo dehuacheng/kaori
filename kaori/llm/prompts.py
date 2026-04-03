@@ -226,3 +226,45 @@ def build_compaction_prompt(old_summary: str | None, meals_text: str) -> str:
         "Return ONLY the summary text, no JSON, no markdown headers."
     )
     return "".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Portfolio: Holdings extraction from screenshots/PDFs
+# ---------------------------------------------------------------------------
+
+_INSTITUTION_HINTS = {
+    "schwab": "This is a Charles Schwab brokerage statement or holdings screenshot.",
+    "fidelity": "This is a Fidelity Investments brokerage statement or holdings screenshot.",
+    "moomoo": "This is a Moomoo (Futu) brokerage statement or holdings screenshot.",
+}
+
+
+def build_holdings_extraction_prompt(institution: str) -> str:
+    hint = _INSTITUTION_HINTS.get(institution, "This is a brokerage account statement or holdings screenshot.")
+
+    return (
+        f"You are a financial document parser. {hint}\n\n"
+        "Extract ALL stock/ETF/fund positions from the provided screenshots or document. "
+        "There may be multiple screenshots showing different parts of the same holdings page — "
+        "combine them and deduplicate any positions that appear in more than one screenshot. "
+        "For each position, extract:\n"
+        '- "ticker": the stock ticker symbol (e.g., AAPL, VOO, QQQ)\n'
+        '- "shares": number of shares held (decimal, e.g., 100.5)\n'
+        '- "cost_basis": per-share cost basis in USD if available (null if not shown)\n'
+        '- "market_value": total market value if shown (null if not shown)\n'
+        '- "description": the full security name/description\n\n'
+        "IMPORTANT:\n"
+        "- Include ALL positions, even small ones\n"
+        "- Use standard US ticker symbols\n"
+        "- For mutual funds, use the fund ticker (e.g., FXAIX, VTSAX)\n"
+        "- Cash and money market positions should use ticker 'CASH' or 'MONEY_MARKET'\n"
+        "- If cost basis is shown as total (not per-share), divide by shares\n"
+        "- Ignore pending transactions, only report settled positions\n\n"
+        'Return a JSON object (no markdown, no code fences) with:\n'
+        '- "positions": array of position objects with the fields above\n'
+        '- "statement_date": date of the statement (YYYY-MM-DD) if identifiable, else null\n'
+        '- "account_type": type of account if identifiable '
+        '(e.g., "Individual", "IRA", "Roth IRA", "401k"), else null\n'
+        '- "confidence": "high", "medium", or "low"\n\n'
+        "Return ONLY the JSON object, nothing else."
+    )
