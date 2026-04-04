@@ -11,6 +11,8 @@ _DEFAULTS = {
     CardType.WEIGHT: (True, False, 99),
     CardType.WORKOUT: (True, False, 99),
     CardType.HEALTHKIT_WORKOUT: (True, False, 99),
+    CardType.POST: (True, False, 99),
+    CardType.REMINDER: (True, True, 3),
 }
 
 

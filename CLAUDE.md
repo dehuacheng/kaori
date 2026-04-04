@@ -131,7 +131,7 @@ Kaori is a **feed-first, card-first** app. Every user-facing feature is a **card
 3. **Data section is for data.** The feed shows cards. The data section shows raw data for browsing/editing/deleting. Analytics are separate.
 
 ### Card Types
-Each card type is defined in `models/card.py` (`CardType` enum). Current types: `meal`, `weight`, `workout`, `portfolio`, `nutrition`, `summary`.
+Each card type is defined in `models/card.py` (`CardType` enum). Current types: `meal`, `weight`, `workout`, `healthkit_workout`, `portfolio`, `nutrition`, `summary`, `post`, `reminder`.
 
 ### Feed Service Registry
 `services/feed_service.py` uses a `CARD_LOADERS` dict to aggregate data. Each loader is an async function `(date_str, group) -> None` that populates a `FeedDateGroup`. No hardcoded if-blocks per card type.

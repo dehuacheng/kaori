@@ -38,6 +38,8 @@ Frontend (any)                       Backend (kaori/ package)
 | [profile.md](profile.md) | 0.1.0 | In Progress | User profile, targets, personal info, free-form notes |
 | [workout.md](workout.md) | 0.2.0 | In Progress | Workout tracking — exercises, sets, reps, weights, timer presets, Apple Health, LLM summary |
 | [finance.md](finance.md) | 0.1.0 | In Progress | Financial accounts — brokerage portfolio tracking, screenshot/PDF import, daily feed card |
+| [cards/post.md](cards/post.md) | 0.1.0 | In Progress | Post — personal microblog for quick thoughts |
+| [cards/reminder.md](cards/reminder.md) | 0.1.0 | In Progress | Reminder/TODO — date-targeted items with overdue surfacing, push-to-later |
 | [roadmap.md](roadmap.md) | — | Reference | Phased roadmap (Phases 2–9) |
 
 ### Version scheme

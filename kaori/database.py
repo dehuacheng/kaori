@@ -253,6 +253,34 @@ CREATE TABLE IF NOT EXISTS stock_prices (
     source          TEXT DEFAULT 'yfinance'
 );
 
+-- User posts (personal microblog / quick thoughts)
+CREATE TABLE IF NOT EXISTS posts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    date        TEXT    NOT NULL,
+    title       TEXT,
+    content     TEXT    NOT NULL,
+    is_pinned   INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT    DEFAULT (datetime('now')),
+    updated_at  TEXT    DEFAULT (datetime('now'))
+);
+
+-- Reminders and TODOs (date-targeted items)
+CREATE TABLE IF NOT EXISTS reminders (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    title         TEXT    NOT NULL,
+    description   TEXT,
+    due_date      TEXT    NOT NULL,
+    original_date TEXT    NOT NULL,
+    item_type     TEXT    NOT NULL DEFAULT 'todo'
+                          CHECK(item_type IN ('reminder', 'todo')),
+    is_done       INTEGER NOT NULL DEFAULT 0,
+    done_at       TEXT,
+    priority      INTEGER NOT NULL DEFAULT 1
+                          CHECK(priority IN (0, 1, 2)),
+    created_at    TEXT    DEFAULT (datetime('now')),
+    updated_at    TEXT    DEFAULT (datetime('now'))
+);
+
 -- Per-card-type user preferences (enable/disable, pinning)
 CREATE TABLE IF NOT EXISTS card_preferences (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -279,6 +307,10 @@ CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(date);
 CREATE INDEX IF NOT EXISTS idx_workout_exercises_workout ON workout_exercises(workout_id);
 CREATE INDEX IF NOT EXISTS idx_exercise_sets_exercise ON exercise_sets(workout_exercise_id);
 CREATE INDEX IF NOT EXISTS idx_workout_analyses_workout ON workout_analyses(workout_id, is_active);
+
+CREATE INDEX IF NOT EXISTS idx_posts_date ON posts(date);
+CREATE INDEX IF NOT EXISTS idx_reminders_due_date ON reminders(due_date);
+CREATE INDEX IF NOT EXISTS idx_reminders_active ON reminders(is_done, due_date);
 """
 
 
@@ -486,6 +518,23 @@ async def _seed_exercise_types(db: aiosqlite.Connection):
     )
 
 
+async def _migrate_card_preferences(db: aiosqlite.Connection):
+    """Ensure new card types have preferences rows in existing databases."""
+    _new_card_defaults = {
+        "post": (1, 0, 99),
+        "reminder": (1, 1, 3),
+    }
+    cursor = await db.execute("SELECT card_type FROM card_preferences")
+    existing = {row[0] for row in await cursor.fetchall()}
+    for card_type, (enabled, pinned, pin_order) in _new_card_defaults.items():
+        if card_type not in existing:
+            await db.execute(
+                "INSERT INTO card_preferences (card_type, enabled, pinned, pin_order) "
+                "VALUES (?, ?, ?, ?)",
+                (card_type, enabled, pinned, pin_order),
+            )
+
+
 async def init_db():
     db = await get_db()
     try:
@@ -496,6 +545,7 @@ async def init_db():
         await _migrate_workouts(db)
         await _migrate_exercise_types(db)
         await _migrate_llm_mode_check(db)
+        await _migrate_card_preferences(db)
         # Seed default profile if empty
         cursor = await db.execute("SELECT COUNT(*) FROM user_profile")
         row = await cursor.fetchone()

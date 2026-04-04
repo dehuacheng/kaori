@@ -9,8 +9,8 @@ from datetime import date, timedelta
 from typing import Callable, Awaitable
 
 from kaori.models.card import CardType, FeedItem, FeedDateGroup, FeedResponse, CardPreference
-from kaori.storage import card_preference_repo, meal_repo, weight_repo, summary_repo
-from kaori.services import meal_service, workout_service, portfolio_service
+from kaori.storage import card_preference_repo, meal_repo, weight_repo, summary_repo, post_repo
+from kaori.services import meal_service, workout_service, portfolio_service, reminder_service
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,24 @@ async def _load_portfolio(date_str: str, group: FeedDateGroup) -> None:
         group.portfolio = portfolio
 
 
+async def _load_posts(date_str: str, group: FeedDateGroup) -> None:
+    posts = await post_repo.list_by_date(date_str)
+    for p in posts:
+        group.items.append(FeedItem(
+            type=CardType.POST, id=p["id"], date=date_str,
+            created_at=p.get("created_at"), data=p,
+        ))
+
+
+async def _load_reminders(date_str: str, group: FeedDateGroup) -> None:
+    items = await reminder_service.list_for_feed(date_str)
+    for r in items:
+        group.items.append(FeedItem(
+            type=CardType.REMINDER, id=r["id"], date=date_str,
+            created_at=r.get("created_at"), data=r,
+        ))
+
+
 # Registry: CardType → loader function
 # To add a new card type, add ONE line here.
 _CardLoader = Callable[[str, FeedDateGroup], Awaitable[None]]
@@ -80,6 +98,8 @@ CARD_LOADERS: dict[str, _CardLoader] = {
     # HEALTHKIT_WORKOUT shares the same loader — dispatched by source field above
     CardType.SUMMARY: _load_summary,
     CardType.PORTFOLIO: _load_portfolio,
+    CardType.POST: _load_posts,
+    CardType.REMINDER: _load_reminders,
 }
 
 

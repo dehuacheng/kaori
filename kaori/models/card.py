@@ -11,6 +11,8 @@ class CardType(str, Enum):
     PORTFOLIO = "portfolio"
     NUTRITION = "nutrition"
     SUMMARY = "summary"
+    POST = "post"
+    REMINDER = "reminder"
 
 
 class CardPreference(BaseModel):

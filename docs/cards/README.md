@@ -15,6 +15,8 @@ Every feature in Kaori is a **card type**. Each card has a design doc here cover
 | `portfolio` | [portfolio.md](portfolio.md) | financial_accounts, portfolio_holdings, portfolio_snapshots, stock_prices | `_load_portfolio` |
 | `nutrition` | [nutrition.md](nutrition.md) | (derived from meals) | `_load_nutrition` |
 | `summary` | [summary.md](summary.md) | summaries | `_load_summary` |
+| `post` | [post.md](post.md) | posts | `_load_posts` |
+| `reminder` | [reminder.md](reminder.md) | reminders | `_load_reminders` |
 
 ## Template for New Cards
 
