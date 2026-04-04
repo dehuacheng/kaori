@@ -12,6 +12,18 @@ async def get_history(limit: int = 30) -> list[dict]:
         await db.close()
 
 
+async def list_by_date(target_date: str) -> list[dict]:
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM body_measurements WHERE date = ? ORDER BY created_at DESC",
+            (target_date,),
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
 async def create(*, date: str, weight_kg: float, notes: str | None = None) -> int:
     db = await get_db()
     try:

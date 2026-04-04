@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS workouts (
     duration_minutes REAL,
     calories_burned  REAL,
     summary          TEXT,
+    source           TEXT    DEFAULT 'manual',
     created_at       TEXT    DEFAULT (datetime('now'))
 );
 
@@ -252,6 +253,16 @@ CREATE TABLE IF NOT EXISTS stock_prices (
     source          TEXT DEFAULT 'yfinance'
 );
 
+-- Per-card-type user preferences (enable/disable, pinning)
+CREATE TABLE IF NOT EXISTS card_preferences (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_type   TEXT    NOT NULL UNIQUE,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    pinned      INTEGER NOT NULL DEFAULT 0,
+    pin_order   INTEGER NOT NULL DEFAULT 99,
+    updated_at  TEXT    DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_financial_accounts_type ON financial_accounts(account_type);
 CREATE INDEX IF NOT EXISTS idx_portfolio_holdings_account ON portfolio_holdings(account_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_snapshots_unique ON portfolio_snapshots(date, account_id);
@@ -354,6 +365,7 @@ _WORKOUT_MIGRATIONS = [
     ("duration_minutes", "REAL"),
     ("calories_burned", "REAL"),
     ("summary", "TEXT"),
+    ("source", "TEXT DEFAULT 'manual'"),
 ]
 
 
@@ -364,6 +376,12 @@ async def _migrate_workouts(db: aiosqlite.Connection):
     for col, col_type in _WORKOUT_MIGRATIONS:
         if col not in existing:
             await db.execute(f"ALTER TABLE workouts ADD COLUMN {col} {col_type}")
+    # Backfill: tag imported workouts (idempotent — safe to run every startup)
+    await db.execute(
+        "UPDATE workouts SET source = 'healthkit' "
+        "WHERE (source IS NULL OR source = 'manual') "
+        "AND notes = 'Imported from Apple Health'"
+        )
 
 
 async def _migrate_llm_mode_check(db: aiosqlite.Connection):

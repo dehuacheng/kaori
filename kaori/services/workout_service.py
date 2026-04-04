@@ -169,6 +169,8 @@ async def create_workout(
     notes: str | None = None,
     activity_type: str = "traditionalStrengthTraining",
     duration_minutes: float | None = None,
+    calories_burned: float | None = None,
+    source: str = "manual",
     exercises: list[dict] | None = None,
 ) -> dict:
     """Create a workout, optionally with nested exercises and sets."""
@@ -177,12 +179,14 @@ async def create_workout(
     if exercises:
         workout_id = await workout_repo.create_workout_with_exercises(
             date=target_date, notes=notes, activity_type=activity_type,
-            duration_minutes=duration_minutes, exercises=exercises,
+            duration_minutes=duration_minutes, calories_burned=calories_burned,
+            source=source, exercises=exercises,
         )
     else:
         workout_id = await workout_repo.create_workout(
             date=target_date, notes=notes, activity_type=activity_type,
-            duration_minutes=duration_minutes,
+            duration_minutes=duration_minutes, calories_burned=calories_burned,
+            source=source,
         )
 
     return await workout_repo.get_workout(workout_id)

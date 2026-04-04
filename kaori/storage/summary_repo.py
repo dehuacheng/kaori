@@ -33,6 +33,18 @@ async def create(*, summary_type: str, target_date: str, summary_text: str,
         await db.close()
 
 
+async def delete(summary_id: int) -> bool:
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "DELETE FROM summaries WHERE id = ?", (summary_id,)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+    finally:
+        await db.close()
+
+
 async def list_recent(summary_type: str, limit: int = 7) -> list[dict]:
     """List the most recent summaries of the given type."""
     db = await get_db()

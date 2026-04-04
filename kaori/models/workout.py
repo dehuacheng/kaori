@@ -73,6 +73,8 @@ class WorkoutCreate(BaseModel):
     notes: str | None = None
     activity_type: str = "traditionalStrengthTraining"
     duration_minutes: float | None = None
+    calories_burned: float | None = None
+    source: str = "manual"  # "manual" or "healthkit"
     exercises: list[WorkoutExerciseCreate] | None = None
 
 

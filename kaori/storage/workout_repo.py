@@ -99,13 +99,15 @@ async def create_workout(
     *, date: str, notes: str | None = None,
     activity_type: str = "traditionalStrengthTraining",
     duration_minutes: float | None = None,
+    calories_burned: float | None = None,
+    source: str = "manual",
 ) -> int:
     db = await get_db()
     try:
         cursor = await db.execute(
-            "INSERT INTO workouts (date, notes, activity_type, duration_minutes) "
-            "VALUES (?, ?, ?, ?)",
-            (date, notes, activity_type, duration_minutes),
+            "INSERT INTO workouts (date, notes, activity_type, duration_minutes, calories_burned, source) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (date, notes, activity_type, duration_minutes, calories_burned, source),
         )
         await db.commit()
         return cursor.lastrowid
@@ -114,7 +116,7 @@ async def create_workout(
 
 
 async def update_workout(workout_id: int, **fields) -> bool:
-    allowed = {"date", "notes", "activity_type", "duration_minutes", "calories_burned", "summary"}
+    allowed = {"date", "notes", "activity_type", "duration_minutes", "calories_burned", "summary", "source"}
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:
         return False
@@ -266,15 +268,17 @@ async def create_workout_with_exercises(
     notes: str | None = None,
     activity_type: str = "traditionalStrengthTraining",
     duration_minutes: float | None = None,
+    calories_burned: float | None = None,
+    source: str = "manual",
     exercises: list[dict] | None = None,
 ) -> int:
     """Create a workout with nested exercises and sets in a single transaction."""
     db = await get_db()
     try:
         cursor = await db.execute(
-            "INSERT INTO workouts (date, notes, activity_type, duration_minutes) "
-            "VALUES (?, ?, ?, ?)",
-            (date, notes, activity_type, duration_minutes),
+            "INSERT INTO workouts (date, notes, activity_type, duration_minutes, calories_burned, source) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (date, notes, activity_type, duration_minutes, calories_burned, source),
         )
         workout_id = cursor.lastrowid
 

@@ -121,16 +121,63 @@ KAORI_TEST_MODE=1 uvicorn kaori.main:app --reload --host 0.0.0.0 --port 8001
 - **Port 8001**: test mode (test data, red banner)
 - Requires `claude` CLI in PATH for default LLM mode. For API mode: set `ANTHROPIC_API_KEY` and `KAORI_LLM_MODE=claude_api`.
 
-## Extensibility Pattern
-Adding a new data domain (e.g., diary, calendar, todo):
-1. `kaori/models/diary.py` — Pydantic models
-2. `kaori/storage/diary_repo.py` + `diary_analysis_repo.py` — DB access
-3. `kaori/services/diary_service.py` — Business logic
-4. `kaori/api/diary.py` — JSON endpoints
-5. `kaori/web/diary.py` + template — Testing UI
-6. Add prompt to `kaori/llm/prompts.py`
-7. Add SQL tables following raw/analysis/override pattern
-8. **Add a feature doc** at `docs/<feature>.md` describing the feature (see below)
+## Card-First Architecture
+
+Kaori is a **feed-first, card-first** app. Every user-facing feature is a **card type** — the atomic unit of the app. Before adding a new feature or modifying an existing one, think: "which card does this belong to?"
+
+### Design Principles
+1. **No card is special in the feed.** The backend `feed_service.py` uses a `CARD_LOADERS` registry — a dict mapping `CardType` → async loader function. Adding a new card type means adding ONE line to this dict.
+2. **Parallel development.** Two developers can build different card types simultaneously. Each card type is fully self-contained in its own domain files (models, storage, services, api). Shared files need only trivial 1-line additions (enum value, loader registration, router include).
+3. **Data section is for data.** The feed shows cards. The data section shows raw data for browsing/editing/deleting. Analytics are separate.
+
+### Card Types
+Each card type is defined in `models/card.py` (`CardType` enum). Current types: `meal`, `weight`, `workout`, `portfolio`, `nutrition`, `summary`.
+
+### Feed Service Registry
+`services/feed_service.py` uses a `CARD_LOADERS` dict to aggregate data. Each loader is an async function `(date_str, group) -> None` that populates a `FeedDateGroup`. No hardcoded if-blocks per card type.
+
+### Adding a New Card Type (Backend)
+1. **Write a card design doc** at `docs/cards/<type>.md` (see `docs/cards/README.md` for template)
+2. Add enum value to `CardType` in `models/card.py`
+3. Create domain files: `models/xxx.py`, `storage/xxx_repo.py`, `services/xxx_service.py`, `api/xxx.py`
+4. Add loader function + 1 line in `CARD_LOADERS` dict in `services/feed_service.py`
+5. Add 1 line in `_DEFAULTS` dict in `storage/card_preference_repo.py`
+6. Add 1 line: `api_router.include_router(xxx.router)` in `api/router.py`
+7. Add SQL tables to `database.py` SCHEMA (following raw/analysis/override pattern)
+8. Add prompt to `kaori/llm/prompts.py` (if LLM-powered)
+
+### Modifying an Existing Card Type
+- All changes to a card's data, API, or behavior stay within that card's domain files
+- If a change affects how the card appears in the feed, update its loader in `feed_service.py`
+- If a change affects card configuration, update `card_preference_repo.py`
+- **Update the card's design doc** in `docs/cards/<type>.md` to reflect the change
+
+### Card Design Docs
+Every card type has a design doc at `docs/cards/<type>.md` covering tables, API endpoints, feed loader, and key files. See `docs/cards/README.md` for the index and template. **These docs must be kept in sync with the code.**
+
+### Card Preferences
+Per-card-type enable/disable stored in `card_preferences` table. Exposed via `GET/PUT /api/feed/card-preferences`. The iOS app hides disabled cards from feed, "+" menu, and Data tab.
+
+### Feed Endpoint
+`GET /api/feed?start_date=...&end_date=...` iterates `CARD_LOADERS` for each date, respecting card preferences. Per-domain endpoints (`/api/meals`, `/api/weight`, etc.) remain available for direct access.
+
+### Pre-Commit Design Check
+Before pushing to GitHub, verify the feed aggregation logic is generic (no per-type if-blocks):
+```bash
+# The _build_date_group and get_feed functions must NOT reference specific CardTypes.
+# CardType refs are fine in loader functions (_load_meals etc.) and CARD_LOADERS dict.
+python3 -c "
+import re, sys
+with open('kaori/services/feed_service.py') as f:
+    text = f.read()
+# Extract _build_date_group and get_feed function bodies
+for fn in ['_build_date_group', 'get_feed']:
+    match = re.search(rf'(async def {fn}\b.*?)(?=\nasync def |\nCARD_LOADERS|\Z)', text, re.S)
+    if match and 'CardType.' in match.group(1):
+        print(f'FAIL: {fn} references specific CardType values'); sys.exit(1)
+print('OK: feed aggregation is card-type-agnostic')
+"
+```
 
 ## Feature Documentation
 When adding a new feature or function, create or update a doc in `docs/` and link it from the Feature Docs table in `docs/PLAN.md`. Each feature doc should cover:

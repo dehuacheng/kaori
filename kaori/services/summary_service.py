@@ -7,7 +7,7 @@ from kaori.llm.prompts import (
     build_daily_detail_prompt,
     build_weekly_detail_prompt,
 )
-from kaori.services import profile_service, weight_service, workout_service
+from kaori.services import profile_service, weight_service, workout_service, portfolio_service
 from kaori.storage import meal_repo, summary_repo
 
 logger = logging.getLogger(__name__)
@@ -75,6 +75,22 @@ async def _build_daily_context(target_date: str | None = None) -> tuple[str, dic
                     detail += f", {int(cal)} kcal"
                 detail += ")"
             parts.append(detail)
+
+    # Portfolio
+    try:
+        portfolio = await portfolio_service.get_portfolio_summary(day)
+        if portfolio and portfolio.get("combined"):
+            combined = portfolio["combined"]
+            total_val = combined.get("total_value", 0)
+            day_change = combined.get("day_change", 0)
+            day_pct = combined.get("day_change_pct", 0)
+            parts.append(f"Portfolio: ${total_val:,.0f} (day change: {day_change:+,.0f}, {day_pct:+.1f}%)")
+            if portfolio.get("top_movers"):
+                movers = portfolio["top_movers"][:3]
+                mover_strs = [f"{m['ticker']} {m['change_pct']:+.1f}%" for m in movers]
+                parts.append(f"  Top movers: {', '.join(mover_strs)}")
+    except Exception:
+        pass  # Portfolio data optional for summary
 
     # Streak
     parts.append(f"Meal logging streak: {streak} day{'s' if streak != 1 else ''}")

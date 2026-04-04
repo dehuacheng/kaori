@@ -34,6 +34,7 @@ async def create_workout(body: WorkoutCreate):
     result = await workout_service.create_workout(
         workout_date=body.date, notes=body.notes,
         activity_type=body.activity_type, duration_minutes=body.duration_minutes,
+        calories_burned=body.calories_burned, source=body.source,
         exercises=exercises,
     )
     return result

@@ -57,11 +57,14 @@ KAORI_TEST_MODE=1 uvicorn kaori.main:app --reload --host 0.0.0.0 --port 8001
 
 ### Architecture
 
+**Feed-first, card-first.** Every feature is a card type. The backend uses a `CARD_LOADERS` registry in `feed_service.py` — adding a new card type means adding one loader function and one dict entry. No hardcoded per-type if-blocks in the feed aggregation.
+
 4-layer separation: **Models** (Pydantic) → **Storage** (SQLite repos) → **Services** (business logic + LLM) → **API** (JSON endpoints).
 
 - SQLite with WAL mode, raw/processed data separation
 - LLM results are versioned and rollback-safe
 - Bearer token auth (designed for single-user, Tailscale-gated access)
+- Unified feed endpoint (`GET /api/feed`) aggregates all card types via registry pattern
 
 ### iOS App
 
@@ -132,11 +135,14 @@ KAORI_TEST_MODE=1 uvicorn kaori.main:app --reload --host 0.0.0.0 --port 8001
 
 ### 架构
 
+**信息流优先，卡片优先。** 每个功能都是一种卡片类型。后端使用 `feed_service.py` 中的 `CARD_LOADERS` 注册表 — 添加新卡片类型只需添加一个加载函数和一行字典注册。信息流聚合中没有硬编码的按类型判断逻辑。
+
 四层分离：**模型**（Pydantic）→ **存储**（SQLite 仓库）→ **服务**（业务逻辑 + LLM）→ **API**（JSON 接口）。
 
 - SQLite WAL 模式，原始数据与处理数据分离
 - LLM 结果版本化，支持安全回滚
 - Bearer token 认证（单用户设计，通过 Tailscale 网关访问）
+- 统一信息流接口（`GET /api/feed`）通过注册表模式聚合所有卡片类型
 
 ### iOS 应用
 
