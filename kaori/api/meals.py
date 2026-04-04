@@ -1,5 +1,7 @@
 import asyncio
+import json
 from datetime import date
+from typing import Optional
 
 from pydantic import BaseModel
 from fastapi import APIRouter, UploadFile, File, Form
@@ -62,8 +64,10 @@ async def reprocess_meal(meal_id: int):
 
     analysis_id = await meal_service.reprocess_meal(meal_id)
 
+    photo_paths_raw = raw.get("photo_paths")
+    photo_paths = json.loads(photo_paths_raw) if photo_paths_raw else None
     asyncio.create_task(meal_service.run_analysis(
-        meal_id, photo_path=raw.get("photo_path"),
+        meal_id, photo_path=raw.get("photo_path"), photo_paths=photo_paths,
         description=raw.get("description"), notes=raw.get("notes"),
     ))
 
@@ -99,26 +103,43 @@ async def create_meal(
     description: str = Form(None),
     notes: str = Form(None),
     photo: UploadFile | None = File(None),
+    photos: Optional[list[UploadFile]] = File(None),
 ):
     today = meal_date or date.today().isoformat()
     photo_path = None
+    photo_paths: list[str] = []
 
-    if photo and photo.size and photo.size > 0:
+    # Handle multiple photos (new multi-photo field)
+    if photos:
+        for p in photos:
+            if p.size and p.size > 0:
+                image_bytes = await p.read()
+                media_type = MEDIA_TYPE_MAP.get(p.content_type, "image/jpeg")
+                ext = ".jpg" if "jpeg" in media_type else f".{media_type.split('/')[-1]}"
+                photo_paths.append(save_photo(image_bytes, ext))
+        if photo_paths:
+            photo_path = photo_paths[0]  # first photo as primary for backward compat
+
+    # Fall back to single photo field
+    if not photo_paths and photo and photo.size and photo.size > 0:
         image_bytes = await photo.read()
         media_type = MEDIA_TYPE_MAP.get(photo.content_type, "image/jpeg")
         ext = ".jpg" if "jpeg" in media_type else f".{media_type.split('/')[-1]}"
         photo_path = save_photo(image_bytes, ext)
+        photo_paths = [photo_path]
 
     meal_type = meal_service.auto_detect_meal_type(meal_type)
 
     meal_id, needs_analysis = await meal_service.create(
         meal_date=today, meal_type=meal_type,
-        description=description, photo_path=photo_path, notes=notes,
+        description=description, photo_path=photo_path,
+        photo_paths=photo_paths or None, notes=notes,
     )
 
     if needs_analysis:
         asyncio.create_task(meal_service.run_analysis(
-            meal_id, photo_path=photo_path, description=description, notes=notes,
+            meal_id, photo_path=photo_path, photo_paths=photo_paths or None,
+            description=description, notes=notes,
         ))
 
     return {"id": meal_id, "date": today, "analysis_status": "pending" if needs_analysis else "done"}

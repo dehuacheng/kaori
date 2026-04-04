@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class CodexCLIBackend(LLMBackend):
     """LLM backend using OpenAI Codex CLI as subprocess."""
 
-    async def _run(self, prompt: str, *, image_path: str | None = None) -> LLMResponse:
+    async def _run(self, prompt: str, *, image_paths: list[str] | None = None) -> LLMResponse:
         codex_path = shutil.which("codex")
         if not codex_path:
             raise LLMError("codex CLI not found in PATH")
@@ -23,18 +23,20 @@ class CodexCLIBackend(LLMBackend):
             "--ephemeral",
             "--skip-git-repo-check",
         ]
-        if image_path:
-            cmd.extend(["-i", image_path, "-"])
+        if image_paths:
+            for p in image_paths:
+                cmd.extend(["-i", p])
+            cmd.append("-")
         else:
             cmd.append(prompt)
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
-            stdin=asyncio.subprocess.PIPE if image_path else None,
+            stdin=asyncio.subprocess.PIPE if image_paths else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdin_data = prompt.encode() if image_path else None
+        stdin_data = prompt.encode() if image_paths else None
         stdout, stderr = await proc.communicate(input=stdin_data)
 
         if proc.returncode != 0:
@@ -55,10 +57,21 @@ class CodexCLIBackend(LLMBackend):
         return await self._run(prompt)
 
     async def analyze_image(self, image_path: str, prompt: str, *, model: str = "sonnet") -> LLMResponse:
-        return await self._run(prompt, image_path=image_path)
+        return await self._run(prompt, image_paths=[image_path])
 
     async def analyze_images(self, images: list[tuple[bytes, str]], prompt: str, *, model: str = "sonnet", thinking: bool = True) -> LLMResponse:
-        raise LLMError("Multi-image analysis not supported by Codex CLI backend")
+        import tempfile, os
+        tmp_paths = []
+        try:
+            for image_data, media_type in images:
+                suffix = ".jpg" if "jpeg" in media_type else f".{media_type.split('/')[-1]}"
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                    tmp.write(image_data)
+                    tmp_paths.append(tmp.name)
+            return await self._run(prompt, image_paths=tmp_paths)
+        finally:
+            for p in tmp_paths:
+                os.unlink(p)
 
     async def analyze_document(self, document_data: bytes, prompt: str, *, media_type: str = "application/pdf", model: str = "sonnet", thinking: bool = True) -> LLMResponse:
         raise LLMError("Document analysis not supported by Codex CLI backend")

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS meals (
     meal_type   TEXT    CHECK(meal_type IN ('breakfast','lunch','dinner','snack')),
     description TEXT,
     photo_path  TEXT,
+    photo_paths TEXT,
     notes       TEXT,
     created_at  TEXT    DEFAULT (datetime('now')),
     updated_at  TEXT    DEFAULT (datetime('now'))
@@ -259,6 +260,8 @@ CREATE TABLE IF NOT EXISTS posts (
     date        TEXT    NOT NULL,
     title       TEXT,
     content     TEXT    NOT NULL,
+    photo_path  TEXT,
+    photo_paths TEXT,
     is_pinned   INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT    DEFAULT (datetime('now')),
     updated_at  TEXT    DEFAULT (datetime('now'))
@@ -535,6 +538,24 @@ async def _migrate_card_preferences(db: aiosqlite.Connection):
             )
 
 
+async def _migrate_meals_multi_photo(db: aiosqlite.Connection):
+    """Add photo_paths column to meals for multi-photo support."""
+    cursor = await db.execute("PRAGMA table_info(meals)")
+    existing = {row[1] for row in await cursor.fetchall()}
+    if "photo_paths" not in existing:
+        await db.execute("ALTER TABLE meals ADD COLUMN photo_paths TEXT")
+
+
+async def _migrate_posts(db: aiosqlite.Connection):
+    """Add photo_path and photo_paths columns to posts for existing databases."""
+    cursor = await db.execute("PRAGMA table_info(posts)")
+    existing = {row[1] for row in await cursor.fetchall()}
+    if "photo_path" not in existing:
+        await db.execute("ALTER TABLE posts ADD COLUMN photo_path TEXT")
+    if "photo_paths" not in existing:
+        await db.execute("ALTER TABLE posts ADD COLUMN photo_paths TEXT")
+
+
 async def init_db():
     db = await get_db()
     try:
@@ -546,6 +567,8 @@ async def init_db():
         await _migrate_exercise_types(db)
         await _migrate_llm_mode_check(db)
         await _migrate_card_preferences(db)
+        await _migrate_meals_multi_photo(db)
+        await _migrate_posts(db)
         # Seed default profile if empty
         cursor = await db.execute("SELECT COUNT(*) FROM user_profile")
         row = await cursor.fetchone()

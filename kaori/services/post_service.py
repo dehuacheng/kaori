@@ -1,3 +1,4 @@
+import json
 from datetime import date
 
 from kaori.storage import post_repo
@@ -8,10 +9,15 @@ async def list_by_date(date_str: str) -> list[dict]:
 
 
 async def create(
-    *, post_date: str | None = None, title: str | None = None, content: str
+    *, post_date: str | None = None, title: str | None = None, content: str,
+    photo_path: str | None = None, photo_paths: list[str] | None = None,
 ) -> int:
     target_date = post_date or date.today().isoformat()
-    return await post_repo.create(date=target_date, title=title, content=content)
+    photo_paths_json = json.dumps(photo_paths) if photo_paths else None
+    return await post_repo.create(
+        date=target_date, title=title, content=content,
+        photo_path=photo_path, photo_paths=photo_paths_json,
+    )
 
 
 async def get(post_id: int) -> dict | None:

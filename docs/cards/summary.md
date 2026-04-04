@@ -19,7 +19,7 @@ AI-generated daily or weekly health report. Summarizes meals, nutrition, workout
 |----------|-------|
 | Manual creation ("+") | Yes (triggers LLM generation) |
 | Tap → detail | Yes → `SummaryDetailView` |
-| Swipe actions | Regenerate |
+| Swipe actions | Delete, Regenerate |
 | Sort priority | 0 (pinned at top) |
 | Pinned | Yes — shown when summary exists or after configured hour |
 

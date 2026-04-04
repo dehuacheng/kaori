@@ -11,7 +11,7 @@
 
 ## Purpose
 
-Log meals via photo, free-form text, or both. LLM estimates nutrition (calories, protein, carbs, fat) with historical context. User can override any estimate.
+Log meals via one or more photos, free-form text, or both. LLM estimates nutrition (calories, protein, carbs, fat) with historical context — multiple photos are analyzed together in a single request. User can override any estimate.
 
 ## Feed Behavior
 
@@ -37,7 +37,7 @@ None (card-level). Nutrition targets are in Profile.
 
 | Table | Purpose |
 |-------|---------|
-| `meals` | Raw meal data (date, meal_type, description, photo_path, notes) |
+| `meals` | Raw meal data (date, meal_type, description, photo_path, photo_paths, notes) |
 | `meal_analyses` | LLM-generated nutrition (versioned, append-only) |
 | `meal_overrides` | User manual corrections (takes precedence) |
 | `meal_habit_summaries` | Compacted meal history for LLM context |
@@ -45,7 +45,7 @@ None (card-level). Nutrition targets are in Profile.
 ### API Endpoints
 
 - `GET /api/meals?date=YYYY-MM-DD` — list meals + totals for a date
-- `POST /api/meals` — create (multipart: photo + fields)
+- `POST /api/meals` — create (multipart: photos + fields; supports single `photo` or multiple `photos`)
 - `GET /api/meals/{id}` — detail
 - `PUT /api/meals/{id}` — update
 - `DELETE /api/meals/{id}` — delete

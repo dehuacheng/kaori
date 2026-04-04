@@ -9,7 +9,7 @@
 
 ## Purpose
 
-Personal microblog for quick thoughts. Like a private Twitter — user writes free-form text posts that appear as cards in the feed on their date.
+Personal microblog for quick thoughts with optional photo attachments. Like a private Twitter — user writes free-form text posts that appear as cards in the feed on their date.
 
 ## Feed Behavior
 
@@ -27,12 +27,12 @@ Personal microblog for quick thoughts. Like a private Twitter — user writes fr
 
 | Table | Purpose |
 |-------|---------|
-| `posts` | User posts (date, title, content, is_pinned). Free-form markdown/text. |
+| `posts` | User posts (date, title, content, photo_path, photo_paths, is_pinned). Free-form markdown/text with optional photos. |
 
 ### API Endpoints
 
 - `GET /api/post?date=...` — list posts by date (or recent history if no date)
-- `POST /api/post` — create post {date, title, content}
+- `POST /api/post` — create post (multipart: photos + fields {post_date, title, content})
 - `GET /api/post/{id}` — get single post
 - `PUT /api/post/{id}` — update {title, content, is_pinned}
 - `DELETE /api/post/{id}` — delete

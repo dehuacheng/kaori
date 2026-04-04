@@ -23,12 +23,13 @@ async def get(post_id: int) -> dict | None:
         await db.close()
 
 
-async def create(*, date: str, title: str | None = None, content: str) -> int:
+async def create(*, date: str, title: str | None = None, content: str,
+                 photo_path: str | None = None, photo_paths: str | None = None) -> int:
     db = await get_db()
     try:
         cursor = await db.execute(
-            "INSERT INTO posts (date, title, content) VALUES (?, ?, ?)",
-            (date, title, content),
+            "INSERT INTO posts (date, title, content, photo_path, photo_paths) VALUES (?, ?, ?, ?, ?)",
+            (date, title, content, photo_path, photo_paths),
         )
         await db.commit()
         return cursor.lastrowid

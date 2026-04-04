@@ -1,9 +1,20 @@
-from fastapi import APIRouter, HTTPException
+from datetime import date as date_mod
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 
 from kaori.models.post import PostCreate, PostUpdate
 from kaori.services import post_service
+from kaori.storage.file_store import save_photo
 
 router = APIRouter(prefix="/post", tags=["api-post"])
+
+MEDIA_TYPE_MAP = {
+    "image/jpeg": "image/jpeg",
+    "image/png": "image/png",
+    "image/heic": "image/jpeg",
+    "image/heif": "image/jpeg",
+}
 
 
 @router.get("")
@@ -14,11 +25,41 @@ async def list_posts(date: str | None = None, limit: int = 50):
 
 
 @router.post("")
-async def create_post(body: PostCreate):
+async def create_post(
+    content: str = Form(...),
+    post_date: str = Form(None),
+    title: str = Form(None),
+    photo: UploadFile | None = File(None),
+    photos: Optional[list[UploadFile]] = File(None),
+):
+    today = post_date or date_mod.today().isoformat()
+    photo_path = None
+    photo_paths: list[str] = []
+
+    # Handle multiple photos
+    if photos:
+        for p in photos:
+            if p.size and p.size > 0:
+                image_bytes = await p.read()
+                media_type = MEDIA_TYPE_MAP.get(p.content_type, "image/jpeg")
+                ext = ".jpg" if "jpeg" in media_type else f".{media_type.split('/')[-1]}"
+                photo_paths.append(save_photo(image_bytes, ext))
+        if photo_paths:
+            photo_path = photo_paths[0]
+
+    # Fall back to single photo field
+    if not photo_paths and photo and photo.size and photo.size > 0:
+        image_bytes = await photo.read()
+        media_type = MEDIA_TYPE_MAP.get(photo.content_type, "image/jpeg")
+        ext = ".jpg" if "jpeg" in media_type else f".{media_type.split('/')[-1]}"
+        photo_path = save_photo(image_bytes, ext)
+        photo_paths = [photo_path]
+
     post_id = await post_service.create(
-        post_date=body.date, title=body.title, content=body.content,
+        post_date=today, title=title, content=content,
+        photo_path=photo_path, photo_paths=photo_paths or None,
     )
-    return {"id": post_id, "date": body.date}
+    return {"id": post_id, "date": today}
 
 
 @router.get("/{post_id}")

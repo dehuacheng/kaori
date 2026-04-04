@@ -101,12 +101,15 @@ async def get_by_id(meal_id: int) -> dict | None:
 
 async def create(*, meal_date: str | None = None, meal_type: str = "snack",
                  description: str | None = None, photo_path: str | None = None,
+                 photo_paths: list[str] | None = None,
                  notes: str | None = None) -> tuple[int, bool]:
     """Create a meal. Returns (meal_id, needs_analysis)."""
     target_date = meal_date or date.today().isoformat()
+    photo_paths_json = json.dumps(photo_paths) if photo_paths else None
     meal_id = await meal_repo.create(
         date=target_date, meal_type=meal_type,
-        description=description, photo_path=photo_path, notes=notes,
+        description=description, photo_path=photo_path,
+        photo_paths=photo_paths_json, notes=notes,
     )
     needs_analysis = photo_path is not None or description is not None
     if needs_analysis:
@@ -172,8 +175,9 @@ def _parse_analysis_response(raw_text: str) -> FoodAnalysis:
 
 
 async def run_analysis(meal_id: int, *, photo_path: str | None = None,
+                       photo_paths: list[str] | None = None,
                        description: str | None = None, notes: str | None = None):
-    """Analyze a meal in background. Supports photo, text, or both."""
+    """Analyze a meal in background. Supports photo(s), text, or both."""
     analysis = await meal_analysis_repo.get_latest_for_meal(meal_id)
     if not analysis:
         return
@@ -186,8 +190,17 @@ async def run_analysis(meal_id: int, *, photo_path: str | None = None,
         backend = get_llm_backend(mode=profile.get("llm_mode"))
         context = await _build_meal_context()
 
-        if photo_path:
-            abs_path = str(PHOTOS_DIR / photo_path)
+        # Determine all photo paths to analyze
+        all_paths = photo_paths or ([photo_path] if photo_path else [])
+
+        if len(all_paths) > 1:
+            # Multiple photos — use analyze_images
+            from kaori.storage.file_store import get_resized_image_bytes
+            images = [(get_resized_image_bytes(p), "image/jpeg") for p in all_paths]
+            prompt = build_photo_analysis_prompt(context, description, notes=notes)
+            response = await backend.analyze_images(images, prompt)
+        elif len(all_paths) == 1:
+            abs_path = str(PHOTOS_DIR / all_paths[0])
             prompt = build_photo_analysis_prompt(context, description, notes=notes)
             response = await backend.analyze_image(abs_path, prompt)
         else:

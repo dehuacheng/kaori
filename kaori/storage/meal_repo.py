@@ -2,7 +2,7 @@ from kaori.database import get_db
 
 # SQL to join meals with their effective nutrition (override > latest analysis)
 _MEAL_WITH_NUTRITION = """
-SELECT m.id, m.date, m.meal_type, m.photo_path, m.notes, m.created_at, m.updated_at,
+SELECT m.id, m.date, m.meal_type, m.photo_path, m.photo_paths, m.notes, m.created_at, m.updated_at,
     COALESCE(mo.description, a.description, m.description) as description,
     COALESCE(mo.calories, a.calories) as calories,
     COALESCE(mo.protein_g, a.protein_g) as protein_g,
@@ -76,13 +76,14 @@ async def get_raw(meal_id: int) -> dict | None:
 
 
 async def create(*, date: str, meal_type: str, description: str | None = None,
-                 photo_path: str | None = None, notes: str | None = None) -> int:
+                 photo_path: str | None = None, photo_paths: str | None = None,
+                 notes: str | None = None) -> int:
     db = await get_db()
     try:
         cursor = await db.execute(
-            "INSERT INTO meals (date, meal_type, description, photo_path, notes) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (date, meal_type, description, photo_path, notes),
+            "INSERT INTO meals (date, meal_type, description, photo_path, photo_paths, notes) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (date, meal_type, description, photo_path, photo_paths, notes),
         )
         meal_id = cursor.lastrowid
         await db.commit()

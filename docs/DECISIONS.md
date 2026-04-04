@@ -158,3 +158,15 @@
 **User intent:** Expand Kaori beyond health/finance into personal productivity. Two new card types: (1) Post — personal microblog for quick thoughts, like a private Twitter. (2) Reminder/TODO — date-targeted items that stay on top of today's feed as reminders or checkable TODOs that can be marked done or pushed to a later date.
 
 **Outcome:** Backend: added `posts` and `reminders` tables, full 4-layer implementation (models, storage, services, API) for both. Post is pure CRUD with free-form content. Reminder has two subtypes (`reminder`/`todo`), overdue surfacing (today's feed shows all past-due undone items via query logic), push-to-later-date (updates `due_date`, preserves `original_date`), mark-done, and priority (0/1/2). Reminder card pinned at `pin_order=3` (above chronological items). Feed loaders registered in `CARD_LOADERS`. Migration added to seed new card preferences in existing databases.
+
+### 2026-04-04 — Multi-photo support for meals and posts
+
+**User intent:** Allow attaching multiple photos (up to 5) when logging meals and creating posts. Meal photos should all be sent to the LLM for nutrition analysis in a single request. Posts are display-only (no LLM analysis).
+
+**Outcome:** Added `photo_paths TEXT` column (JSON array) to both `meals` and `posts` tables alongside existing `photo_path` (backward compat). Backend API accepts `photos: list[UploadFile]` multipart field. Meal LLM analysis uses `analyze_images()` for multi-photo meals. Codex CLI backend updated to support multi-image via multiple `-i` flags (was previously raising NotSupported). iOS: new `MultiPhotoPickerButton` (camera + library, up to 5, horizontal scroll preview). Feed cards and detail views show horizontal scroll gallery for multiple photos, single scaledToFit for one.
+
+### 2026-04-04 — HealthKit activity type mapping expansion
+
+**User intent:** Stair climbing workouts from Apple Health were being imported as "activity.other". Fix the mapping and add all missing types.
+
+**Outcome:** Added 7 missing activity types (stairClimbing, elliptical, rowing, flexibility, mixedCardio, dance, jumpRope) to both `activityTypeString(from:)` and `workoutActivityType(from:)` in HealthKitManager.swift. Updated backend `ACTIVITY_TYPES` list to include all 19 types. Also added delete swipe action to Summary card (was regenerate-only), and changed weight analytics chart to use minimum value when multiple entries exist per day.
