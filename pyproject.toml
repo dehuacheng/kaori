@@ -25,6 +25,10 @@ dependencies = [
 llm-api = [
     "anthropic>=0.43",
 ]
+agent = [
+    "anthropic>=0.43",
+    "openai>=1.0",
+]
 mcp = [
     "mcp[cli]>=1.0",
     "httpx>=0.28",

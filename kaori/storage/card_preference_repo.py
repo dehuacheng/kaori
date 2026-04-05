@@ -13,6 +13,7 @@ _DEFAULTS = {
     CardType.HEALTHKIT_WORKOUT: (True, False, 99),
     CardType.POST: (True, False, 99),
     CardType.REMINDER: (True, True, 3),
+    CardType.AGENT_SESSION: (True, False, 99),
 }
 
 

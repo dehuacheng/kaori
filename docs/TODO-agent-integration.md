@@ -1,64 +1,46 @@
-# TODO: Agent Session Integration (kaori backend)
+# Agent Session Integration (kaori backend)
 
 > Created 2026-04-05 during kaori-agent Phase 4 implementation.
-> kaori-agent already creates and uses these tables. This work adds backend
-> awareness (schema ownership, REST API, card type) so iOS can access agent data.
+> Updated 2026-04-05: Tasks 1-7 implemented + SSE chat endpoint added.
 
 ## Context
 
 kaori-agent Phase 4 stores session data in `agent_*` tables inside kaori.db.
-The agent creates tables via CREATE TABLE IF NOT EXISTS on startup. This TODO
-covers the kaori backend adopting those tables and exposing them via REST API
-for iOS consumption.
+The agent creates tables via CREATE TABLE IF NOT EXISTS on startup. This work
+adds backend awareness (schema ownership, REST API, card type, SSE chat) so
+iOS can access agent data and run chat conversations.
 
 ## Tasks
 
-### 1. Schema — add agent tables to `kaori/database.py`
+### 1. Schema — add agent tables to `kaori/database.py` ✅
 
-Add to `SCHEMA` string (after `card_preferences`):
+Added all 5 agent tables + 3 indexes to SCHEMA string. Added `agent_session`
+to card preference migration.
 
-```sql
--- Agent chat sessions
-CREATE TABLE IF NOT EXISTS agent_sessions (...)
-CREATE TABLE IF NOT EXISTS agent_messages (...)
-CREATE TABLE IF NOT EXISTS agent_memory (...)
-CREATE TABLE IF NOT EXISTS agent_compactions (...)
-CREATE TABLE IF NOT EXISTS agent_prompts (...)
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_agent_messages_session ...
-CREATE INDEX IF NOT EXISTS idx_agent_sessions_status ...
-CREATE INDEX IF NOT EXISTS idx_agent_compactions_session ...
-```
-
-Full DDL is in `kaori-agent/kaori_agent/session.py` `_AGENT_SCHEMA`.
-
-Add `_migrate_agent_tables(db)` to `init_db()` — no-op if tables already exist.
-
-### 2. Storage repos — create 5 files in `kaori/storage/`
+### 2. Storage repos — create 5 files in `kaori/storage/` ✅
 
 | File | Purpose |
 |------|---------|
 | `agent_session_repo.py` | Session CRUD (create, get, list, update, delete) |
-| `agent_message_repo.py` | Message append, list, count, get_latest_seq |
+| `agent_message_repo.py` | Message append, list, count, get_latest_seq, list_after_seq |
 | `agent_memory_repo.py` | Memory get, upsert, delete, list_all |
 | `agent_compaction_repo.py` | Compaction get_active, create, list_versions |
 | `agent_prompt_repo.py` | Prompt get_active, list, create, update, set_active, delete |
 
-Follow existing repo pattern: `async def func(...): db = await get_db(); try: ... finally: await db.close()`
+### 3. Service — create `kaori/services/agent_service.py` ✅
 
-### 3. Service — create `kaori/services/agent_service.py`
+Thin orchestration layer delegating to repos.
 
-Thin orchestration layer delegating to repos. No complex business logic.
-
-### 4. API — create `kaori/api/agent.py`
+### 4. API — create `kaori/api/agent.py` ✅
 
 REST endpoints:
 
 ```
 GET    /api/agent/sessions                 — list sessions (status filter)
+POST   /api/agent/sessions                 — create session
 GET    /api/agent/sessions/{id}            — session + messages
 PUT    /api/agent/sessions/{id}            — update title/status
-DELETE /api/agent/sessions/{id}            — delete session + cascade
+DELETE /api/agent/sessions/{id}            — delete (cascade)
 GET    /api/agent/memory                   — list all memory entries
 PUT    /api/agent/memory/{key}             — upsert memory entry
 DELETE /api/agent/memory/{key}             — delete memory entry
@@ -67,39 +49,37 @@ POST   /api/agent/prompts                  — create prompt
 PUT    /api/agent/prompts/{id}             — update prompt
 PUT    /api/agent/prompts/{id}/activate    — set as active
 DELETE /api/agent/prompts/{id}             — delete prompt
+POST   /api/agent/chat                     — SSE streaming chat
 ```
 
-### 5. Router — register in `kaori/api/router.py`
+### 5. Router — register in `kaori/api/router.py` ✅
 
-```python
-from kaori.api import agent
-api_router.include_router(agent.router)
-```
+### 6. Card type — add to `kaori/models/card.py` ✅
 
-### 6. Card type — add to `kaori/models/card.py`
+`AGENT_SESSION = "agent_session"` added to `CardType` enum.
+Added to `_DEFAULTS` in `card_preference_repo.py`.
 
-```python
-AGENT_SESSION = "agent_session"
-```
+### 7. Card design doc — create `docs/cards/agent.md` ✅
 
-Add to `_DEFAULTS` in `storage/card_preference_repo.py`:
-```python
-"agent_session": (1, 0, 99),
-```
+### 8. Agent LLM backend + engine + tools ✅ (bonus)
 
-### 7. Card design doc — create `docs/cards/agent.md`
+Added beyond original TODO scope:
 
-Follow the template in `docs/cards/README.md`.
+| File | Purpose |
+|------|---------|
+| `kaori/llm/agent_backend.py` | AgentLLMBackend ABC + Anthropic/OpenAI implementations |
+| `kaori/services/agent_engine.py` | Agentic turn loop (ported from kaori-agent) |
+| `kaori/services/agent_tools.py` | 9 server-side tools calling kaori services directly |
+| `kaori/services/agent_chat_service.py` | Chat orchestration + SSE event generation |
 
-### 8. Feed integration (optional, future)
+### 9. Feed integration (future)
 
 Add a loader to `CARD_LOADERS` in `feed_service.py` that shows the latest active
-session as a feed card (session title + last message preview). This enables the
-"Agent" card to appear in the iOS feed alongside meals, weight, etc.
+session as a feed card (session title + last message preview).
 
-## Notes
+## Config
 
-- All agent tables are `agent_`-prefixed with no FK to existing kaori tables
-- kaori-agent will continue to create tables on its own (for standalone use)
-- kaori backend adopting the schema is purely for API serving + schema ownership
-- iOS integration requires this work + Phase 8 (SwiftUI chat UI) in kaori-ios
+The agent chat backend needs LLM API keys:
+- `ANTHROPIC_API_KEY` — for Anthropic backend (reuses existing)
+- `DEEPSEEK_API_KEY` — for DeepSeek backend (new)
+- `KAORI_AGENT_BACKEND` — backend selection (default: "anthropic")

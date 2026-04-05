@@ -13,6 +13,7 @@ class CardType(str, Enum):
     SUMMARY = "summary"
     POST = "post"
     REMINDER = "reminder"
+    AGENT_SESSION = "agent_session"
 
 
 class CardPreference(BaseModel):

@@ -176,3 +176,9 @@
 **User intent:** Expose Kaori data to Claude Code and kaori-agent via MCP (Model Context Protocol) instead of building custom tools per-client. Read-only only — no writes. Agent should focus on high-level tasks (querying life data), not low-level coding tools.
 
 **Outcome:** Created `kaori/mcp_server.py` with 15 read-only tools wrapping GET endpoints (feed, meals, weight, profile, portfolio, workouts, summaries, reminders, exercise types). Uses `fastmcp` + `httpx`. Auth via `KAORI_API_TOKEN` env var — no secrets in code. Added `[mcp]` optional dependency group and `kaori-mcp` entry point.
+
+### 2026-04-05 — Agent session REST API + SSE chat endpoint
+
+**User intent:** Expose agent session data via REST API and add an SSE streaming chat endpoint so the iOS app can have a Chat tab for AI agent conversations. The agent engine (agentic turn loop with tool_use) should run server-side on the kaori backend, not on the iOS client.
+
+**Outcome:** Implemented full agent integration: 5 storage repos, service layer, 14 REST endpoints (sessions/memory/prompts CRUD + SSE chat), new `AgentLLMBackend` abstraction (Anthropic + OpenAI-compatible backends), agentic turn loop ported from kaori-agent, 9 server-side tools calling kaori services directly. Added `AGENT_SESSION` to CardType enum. Chat endpoint streams events (thinking/text/tool_use/done) via SSE.

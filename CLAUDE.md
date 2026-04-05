@@ -23,12 +23,18 @@ kaori/                  # Backend Python package
     portfolio_snapshot_repo.py Daily portfolio snapshots
     stock_price_repo.py     Stock price cache
     financial_import_repo.py Screenshot/PDF import analysis
+    agent_session_repo.py   Agent chat session CRUD
+    agent_message_repo.py   Agent message persistence
+    agent_memory_repo.py    Agent cross-session memory
+    agent_compaction_repo.py Agent transcript compaction
+    agent_prompt_repo.py    Agent personal prompts
 
   llm/                  ← LLM abstraction layer
     base.py                 LLMBackend ABC (the interface)
     claude_cli.py           Claude CLI subprocess backend
     claude_api.py           Anthropic SDK backend
     prompts.py              Prompt templates
+    agent_backend.py        AgentLLMBackend ABC (chat + tool_use + streaming)
 
   services/             ← Business logic (orchestrates storage + llm)
     meal_service.py         Meal operations + analysis orchestration
@@ -37,10 +43,15 @@ kaori/                  # Backend Python package
     stock_price_service.py  Stock price fetching + caching
     account_sync/           Brokerage API connectors (Schwab, Moomoo stubs)
     profile_service.py      Profile CRUD + LLM context formatting
+    agent_service.py        Agent session/memory/prompt orchestration
+    agent_chat_service.py   Agent chat turn loop + SSE streaming
+    agent_engine.py         Agentic turn loop (tool_use loop)
+    agent_tools.py          Server-side agent tools (9 tools)
 
   api/                  ← JSON API endpoints at /api/*
     router.py               Aggregates all API sub-routers
     meals.py, weight.py, profile.py, finance.py, test_mode.py
+    agent.py                Agent sessions/memory/prompts + SSE chat
 
   web/                  ← HTML pages (barebone testing frontend)
     router.py               Aggregates all web sub-routers
@@ -138,6 +149,27 @@ KAORI_API_TOKEN=<token> python -m kaori.mcp_server
 `get_workouts`, `get_workout_detail`, `get_daily_summary`, `get_weekly_summary`,
 `get_reminders`, `get_meal_streak`, `get_exercise_types`
 
+## Agent Chat API
+
+Kaori backend hosts an AI agent chat service with SSE streaming. The agent can
+query all kaori data via 9 server-side tools (no HTTP round-trip — calls services directly).
+
+**Dependencies:** `pip install -e ".[agent]"` (adds `anthropic`, `openai` SDKs)
+
+**Config via env vars:**
+- `KAORI_AGENT_BACKEND` — `anthropic` (default), `deepseek`, `openai`, `kimi`
+- `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` — API key for chosen backend
+
+**Endpoints:**
+- `POST /api/agent/chat` — SSE streaming chat (body: `{message, session_id?}`)
+- `GET/POST/PUT/DELETE /api/agent/sessions` — session CRUD
+- `GET/PUT/DELETE /api/agent/memory` — cross-session memory
+- `GET/POST/PUT/DELETE /api/agent/prompts` — personal prompt management
+
+**Architecture:** `AgentLLMBackend` ABC (in `llm/agent_backend.py`) is separate from the
+existing `LLMBackend` ABC. The agent backend handles chat + tool_use + streaming; the
+existing backend handles one-shot tasks (meal analysis, summaries). They do not interfere.
+
 ## Key Decisions
 - **Codename**: Kaori — personal super app, not just health
 - **Frontend**: Server-rendered HTML (HTMX + Alpine.js) is barebone testing UI only. Primary frontends will be separate repos (iOS, web SPA).
@@ -173,7 +205,7 @@ Kaori is a **feed-first, card-first** app. Every user-facing feature is a **card
 3. **Data section is for data.** The feed shows cards. The data section shows raw data for browsing/editing/deleting. Analytics are separate.
 
 ### Card Types
-Each card type is defined in `models/card.py` (`CardType` enum). Current types: `meal`, `weight`, `workout`, `healthkit_workout`, `portfolio`, `nutrition`, `summary`, `post`, `reminder`.
+Each card type is defined in `models/card.py` (`CardType` enum). Current types: `meal`, `weight`, `workout`, `healthkit_workout`, `portfolio`, `nutrition`, `summary`, `post`, `reminder`, `agent_session`.
 
 ### Feed Service Registry
 `services/feed_service.py` uses a `CARD_LOADERS` dict to aggregate data. Each loader is an async function `(date_str, group) -> None` that populates a `FeedDateGroup`. No hardcoded if-blocks per card type.

@@ -314,6 +314,74 @@ CREATE INDEX IF NOT EXISTS idx_workout_analyses_workout ON workout_analyses(work
 CREATE INDEX IF NOT EXISTS idx_posts_date ON posts(date);
 CREATE INDEX IF NOT EXISTS idx_reminders_due_date ON reminders(due_date);
 CREATE INDEX IF NOT EXISTS idx_reminders_active ON reminders(is_done, due_date);
+
+-- Agent chat sessions
+CREATE TABLE IF NOT EXISTS agent_sessions (
+    id          TEXT    PRIMARY KEY,
+    title       TEXT,
+    status      TEXT    NOT NULL DEFAULT 'active'
+                        CHECK(status IN ('active','archived','deleted')),
+    backend     TEXT,
+    model       TEXT,
+    message_count INTEGER NOT NULL DEFAULT 0,
+    token_count_approx INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT    DEFAULT (datetime('now')),
+    updated_at  TEXT    DEFAULT (datetime('now'))
+);
+
+-- Messages within an agent session (ordered by seq)
+CREATE TABLE IF NOT EXISTS agent_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT    NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+    seq         INTEGER NOT NULL,
+    role        TEXT    NOT NULL CHECK(role IN ('user','assistant','tool_result','summary')),
+    content     TEXT    NOT NULL,
+    token_count_approx INTEGER DEFAULT 0,
+    created_at  TEXT    DEFAULT (datetime('now'))
+);
+
+-- Cross-session persistent memory (facts the agent learns)
+CREATE TABLE IF NOT EXISTS agent_memory (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    key         TEXT    NOT NULL UNIQUE,
+    value       TEXT    NOT NULL,
+    category    TEXT    DEFAULT 'general',
+    source      TEXT,
+    created_at  TEXT    DEFAULT (datetime('now')),
+    updated_at  TEXT    DEFAULT (datetime('now'))
+);
+
+-- Transcript compaction summaries (versioned, rollback-safe)
+CREATE TABLE IF NOT EXISTS agent_compactions (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id      TEXT    NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+    version         INTEGER NOT NULL,
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    summary_text    TEXT    NOT NULL,
+    messages_summarized INTEGER NOT NULL,
+    up_to_seq       INTEGER NOT NULL,
+    llm_backend     TEXT,
+    model           TEXT,
+    raw_response    TEXT,
+    created_at      TEXT    DEFAULT (datetime('now'))
+);
+
+-- Personal prompts (editable from iOS)
+CREATE TABLE IF NOT EXISTS agent_prompts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL UNIQUE,
+    prompt_text TEXT    NOT NULL,
+    is_active   INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT    DEFAULT (datetime('now')),
+    updated_at  TEXT    DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_messages_session
+    ON agent_messages(session_id, seq);
+CREATE INDEX IF NOT EXISTS idx_agent_sessions_status
+    ON agent_sessions(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_compactions_session
+    ON agent_compactions(session_id, is_active);
 """
 
 
@@ -526,6 +594,7 @@ async def _migrate_card_preferences(db: aiosqlite.Connection):
     _new_card_defaults = {
         "post": (1, 0, 99),
         "reminder": (1, 1, 3),
+        "agent_session": (1, 0, 99),
     }
     cursor = await db.execute("SELECT card_type FROM card_preferences")
     existing = {row[0] for row in await cursor.fetchall()}
