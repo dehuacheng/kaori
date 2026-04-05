@@ -57,6 +57,11 @@ async def _load_workouts(date_str: str, group: FeedDateGroup) -> None:
 
 
 async def _load_summary(date_str: str, group: FeedDateGroup) -> None:
+    # Check for weekly summary first (takes precedence), then daily
+    weekly = await summary_repo.get_latest("weekly", date_str)
+    if weekly:
+        group.summary = weekly
+        return
     daily = await summary_repo.get_latest("daily", date_str)
     if daily:
         group.summary = daily

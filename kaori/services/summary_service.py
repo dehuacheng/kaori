@@ -111,38 +111,84 @@ async def _build_daily_context(target_date: str | None = None) -> tuple[str, dic
 
 
 async def _build_weekly_context() -> str:
-    """Build context string for the past 7 days."""
+    """Build detailed context for the past 7 days — same fidelity as daily context."""
     today = date.today()
     parts = []
 
-    # Daily breakdown
-    for i in range(6, -1, -1):
-        day = (today - timedelta(days=i)).isoformat()
-        meals = await meal_repo.list_by_date(day)
-        totals = await meal_repo.get_totals(day)
-        workouts = await workout_service.list_workouts(target_date=day)
-        line = f"{day}: {len(meals)} meals ({int(totals['total_cal'])} kcal, {totals['total_protein']:.0f}g protein)"
-        if workouts:
-            line += f", {len(workouts)} workout(s)"
-        parts.append(line)
-
-    # Weight trend
-    trends = await weight_service.get_trends(limit=30)
-    weights = trends.get("weights_asc", [])
-    week_ago = (today - timedelta(days=7)).isoformat()
-    this_week = [w for w in weights if w["date"] >= week_ago]
-    if this_week:
-        values = [w["weight_kg"] for w in this_week]
-        parts.append(f"\nWeight this week: {values[0]:.1f} -> {values[-1]:.1f} kg "
-                     f"(avg {sum(values)/len(values):.1f} kg, {len(values)} entries)")
-
-    # Profile targets
+    # Profile targets (up front for reference)
     profile = await profile_service.get_profile()
     if profile.get("target_calories"):
         parts.append(
             f"Targets: {profile['target_calories']} kcal/day, "
             f"{profile.get('target_protein_g', '?')}g protein/day"
         )
+    parts.append("")
+
+    # Detailed per-day breakdown
+    for i in range(6, -1, -1):
+        day = (today - timedelta(days=i)).isoformat()
+        meals = await meal_repo.list_by_date(day)
+        totals = await meal_repo.get_totals(day)
+        workouts = await workout_service.list_workouts(target_date=day)
+
+        parts.append(f"### {day}")
+
+        # Meals detail
+        if meals:
+            meal_types = [m["meal_type"] for m in meals]
+            parts.append(f"Meals: {', '.join(meal_types)}")
+            for m in meals:
+                cal = m.get("calories") or 0
+                prot = m.get("protein_g") or 0
+                desc = m.get("description") or "(no description)"
+                parts.append(f"  - {m['meal_type']}: {desc} ({cal} kcal, {prot:.0f}g protein)")
+            parts.append(
+                f"Day totals: {int(totals['total_cal'])} kcal, "
+                f"{totals['total_protein']:.0f}g protein, "
+                f"{totals['total_carbs']:.0f}g carbs, "
+                f"{totals['total_fat']:.0f}g fat"
+            )
+        else:
+            parts.append("No meals logged")
+
+        # Workouts detail
+        if workouts:
+            parts.append(f"Workouts: {len(workouts)}")
+            for w in workouts:
+                dur = w.get("duration_minutes")
+                cal = w.get("calories_burned")
+                summary = w.get("summary") or w.get("activity_type", "workout")
+                detail = f"  - {summary}"
+                if dur:
+                    detail += f" ({int(dur)} min"
+                    if cal:
+                        detail += f", {int(cal)} kcal"
+                    detail += ")"
+                parts.append(detail)
+
+        # Portfolio (optional, for that day)
+        try:
+            portfolio = await portfolio_service.get_portfolio_summary(day)
+            if portfolio and portfolio.get("combined"):
+                combined = portfolio["combined"]
+                total_val = combined.get("total_value", 0)
+                day_change = combined.get("day_change", 0)
+                day_pct = combined.get("day_change_pct", 0)
+                parts.append(f"Portfolio: ${total_val:,.0f} (day change: {day_change:+,.0f}, {day_pct:+.1f}%)")
+        except Exception:
+            pass
+
+        parts.append("")
+
+    # Weight trend for the week
+    trends = await weight_service.get_trends(limit=30)
+    weights = trends.get("weights_asc", [])
+    week_ago = (today - timedelta(days=7)).isoformat()
+    this_week = [w for w in weights if w["date"] >= week_ago]
+    if this_week:
+        values = [w["weight_kg"] for w in this_week]
+        parts.append(f"Weight this week: {values[0]:.1f} -> {values[-1]:.1f} kg "
+                     f"(avg {sum(values)/len(values):.1f} kg, {len(values)} entries)")
 
     # Streak
     streak = await meal_repo.get_logging_streak()

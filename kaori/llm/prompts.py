@@ -109,7 +109,7 @@ def build_weekly_detail_prompt(context: str, language: str = "en") -> str:
     lang_hint = "Respond in Chinese." if language.startswith("zh") else "Respond in English."
     return (
         "You are a personal health assistant with a warm, playful personality. "
-        "Write a weekly health report. "
+        "Write a weekly health report based on the detailed 7-day data below. "
         f"{lang_hint}\n\n"
         f"{context}\n\n"
         "FORMAT: Start with 1-2 sentences of playful commentary about the week "
@@ -117,11 +117,13 @@ def build_weekly_detail_prompt(context: str, language: str = "en") -> str:
         "Then use ## section headers. Keep each section to 2-4 sentences. "
         "Skip sections with no data.\n\n"
         "## Weight Trend\nStart/end weight, delta. One-line assessment.\n\n"
-        "## Nutrition\nAvg daily calories/protein. Consistency.\n\n"
-        "## Training\nWorkout count, highlights.\n\n"
-        "## Plan\n2-3 specific goals for next week.\n\n"
-        "Total ~150-200 words. Use actual numbers. Use **bold** for key numbers. "
-        "Return ONLY the markdown, nothing else."
+        "## Nutrition\nAvg daily calories/protein across the week. "
+        "Note patterns — which days were over/under target, any meal gaps.\n\n"
+        "## Training\nWorkout count and highlights. Note rest days and consistency.\n\n"
+        "## Portfolio\nWeek performance summary if data available.\n\n"
+        "## Plan\n2-3 specific goals for next week based on this week's patterns.\n\n"
+        "Total ~200-300 words. Use actual numbers from the data. "
+        "Use **bold** for key numbers. Return ONLY the markdown, nothing else."
     )
 
 
