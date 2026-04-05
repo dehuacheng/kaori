@@ -170,3 +170,9 @@
 **User intent:** Stair climbing workouts from Apple Health were being imported as "activity.other". Fix the mapping and add all missing types.
 
 **Outcome:** Added 7 missing activity types (stairClimbing, elliptical, rowing, flexibility, mixedCardio, dance, jumpRope) to both `activityTypeString(from:)` and `workoutActivityType(from:)` in HealthKitManager.swift. Updated backend `ACTIVITY_TYPES` list to include all 19 types. Also added delete swipe action to Summary card (was regenerate-only), and changed weight analytics chart to use minimum value when multiple entries exist per day.
+
+### 2026-04-05 — MCP server for read-only data access
+
+**User intent:** Expose Kaori data to Claude Code and kaori-agent via MCP (Model Context Protocol) instead of building custom tools per-client. Read-only only — no writes. Agent should focus on high-level tasks (querying life data), not low-level coding tools.
+
+**Outcome:** Created `kaori/mcp_server.py` with 15 read-only tools wrapping GET endpoints (feed, meals, weight, profile, portfolio, workouts, summaries, reminders, exercise types). Uses `fastmcp` + `httpx`. Auth via `KAORI_API_TOKEN` env var — no secrets in code. Added `[mcp]` optional dependency group and `kaori-mcp` entry point.

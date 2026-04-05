@@ -103,6 +103,41 @@ KAORI_TEST_MODE=1 uvicorn kaori.main:app --reload --host 0.0.0.0 --port 8001 &
 ## Workflow Preferences
 - After making a plan, start implementing code changes promptly. Do not spend extended time reading files and planning without producing edits — the user prefers iterative progress over exhaustive upfront analysis.
 
+## MCP Server (Read-Only)
+
+Kaori exposes a read-only MCP server at `kaori/mcp_server.py` for querying personal data
+from Claude Code, kaori-agent, or any MCP client. **15 tools**, all GET requests.
+
+```bash
+# Install
+pip install -e ".[mcp]"
+
+# Run standalone (stdio transport)
+KAORI_API_TOKEN=<token> python -m kaori.mcp_server
+```
+
+**Claude Code config** (add to `.claude/settings.json` or project `.mcp.json`):
+```json
+{
+  "mcpServers": {
+    "kaori": {
+      "command": "python",
+      "args": ["-m", "kaori.mcp_server"],
+      "cwd": "/path/to/kaori",
+      "env": {
+        "KAORI_API_URL": "http://localhost:8000",
+        "KAORI_API_TOKEN": "<token>"
+      }
+    }
+  }
+}
+```
+
+**Tools:** `get_feed`, `get_meals`, `get_meal_detail`, `get_weight`, `get_profile`,
+`get_portfolio_summary`, `get_financial_accounts`, `get_account_holdings`,
+`get_workouts`, `get_workout_detail`, `get_daily_summary`, `get_weekly_summary`,
+`get_reminders`, `get_meal_streak`, `get_exercise_types`
+
 ## Key Decisions
 - **Codename**: Kaori — personal super app, not just health
 - **Frontend**: Server-rendered HTML (HTMX + Alpine.js) is barebone testing UI only. Primary frontends will be separate repos (iOS, web SPA).
