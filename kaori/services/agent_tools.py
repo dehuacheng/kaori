@@ -54,7 +54,7 @@ class GetMealsTool(BaseTool):
     async def execute(self, date: str = "", **kw) -> ToolResult:
         from kaori.services import meal_service
         target = date or __import__("datetime").date.today().isoformat()
-        result = await meal_service.get_meals_with_analysis(target)
+        result = await meal_service.list_by_date(target)
         return ToolResult(output=_format(result))
 
 
@@ -70,7 +70,7 @@ class GetWeightTool(BaseTool):
 
     async def execute(self, limit: int = 30, **kw) -> ToolResult:
         from kaori.services import weight_service
-        result = await weight_service.get_entries(limit=limit)
+        result = await weight_service.get_history(limit=limit)
         return ToolResult(output=_format(result))
 
 
@@ -97,7 +97,8 @@ class GetPortfolioSummaryTool(BaseTool):
 
     async def execute(self, date: str = "", **kw) -> ToolResult:
         from kaori.services import portfolio_service
-        result = await portfolio_service.get_portfolio_summary(date=date or None)
+        target = date or __import__("datetime").date.today().isoformat()
+        result = await portfolio_service.get_portfolio_summary(target)
         return ToolResult(output=_format(result))
 
 
@@ -114,10 +115,9 @@ class GetWorkoutsTool(BaseTool):
 
     async def execute(self, date: str = "", limit: int = 30, **kw) -> ToolResult:
         from kaori.storage import workout_repo
-        if date:
-            result = await workout_repo.list_by_date(date)
-        else:
-            result = await workout_repo.list_recent(limit=limit)
+        result = await workout_repo.list_workouts(
+            date=date or None, limit=limit,
+        )
         return ToolResult(output=_format(result))
 
 
@@ -137,7 +137,7 @@ class GetRemindersTool(BaseTool):
         if date:
             result = await reminder_repo.list_by_date(date)
         else:
-            result = await reminder_repo.list_recent(limit=limit)
+            result = await reminder_repo.get_history(limit=limit)
         return ToolResult(output=_format(result))
 
 
