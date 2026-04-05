@@ -32,6 +32,9 @@ Thumbs.db
 *.swo
 *~
 
+# Bug tracking (local only)
+docs/BUGS.md
+
 # Testing / coverage
 .pytest_cache/
 .coverage

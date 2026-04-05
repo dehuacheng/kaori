@@ -96,6 +96,13 @@ KAORI_TEST_MODE=1 uvicorn kaori.main:app --reload --host 0.0.0.0 --port 8001 &
 - Web routes render templates only. Business logic stays in services.
 - LLM callers depend only on `LLMBackend` ABC, never on concrete backends.
 
+## Backend Patterns
+- **FastAPI route ordering matters:** place specific string path routes BEFORE generic parameterized routes (e.g., `/items/search` before `/items/{id}`) to avoid path conflicts.
+- **JSON contracts:** When adding new model fields, test JSON encoding/decoding round-trips between Python (Pydantic) and Swift (Codable). Silent decoding failures are hard to trace.
+
+## Workflow Preferences
+- After making a plan, start implementing code changes promptly. Do not spend extended time reading files and planning without producing edits — the user prefers iterative progress over exhaustive upfront analysis.
+
 ## Key Decisions
 - **Codename**: Kaori — personal super app, not just health
 - **Frontend**: Server-rendered HTML (HTMX + Alpine.js) is barebone testing UI only. Primary frontends will be separate repos (iOS, web SPA).
