@@ -8,6 +8,7 @@ import json
 import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
+from pathlib import Path
 
 from kaori.llm.agent_backend import (
     AgentLLMBackend, StreamEvent, get_agent_backend, get_agent_default_model,
@@ -51,15 +52,29 @@ def _build_system_prompt(
     """Build system prompt from active prompt + memory + context."""
     parts = []
 
+    # Resolve personality: DB prompt > personality file > default
+    personality = None
     if active_prompt:
-        parts.append(active_prompt["prompt_text"])
-        parts.append("---")
+        personality = active_prompt["prompt_text"]
+    else:
+        # Fall back to CLI personality file (shared config)
+        p = Path("~/.kaori-agent/personality.md").expanduser()
+        if p.exists():
+            personality = p.read_text().strip()
 
-    parts.append(
-        "You are a helpful personal assistant. "
-        "You have access to tools for querying health, nutrition, fitness, "
-        "finance, and personal data. Be concise and direct."
-    )
+    if personality:
+        parts.append(personality)
+        parts.append("---")
+        parts.append(
+            "You have access to tools for querying health, nutrition, fitness, "
+            "finance, and personal data."
+        )
+    else:
+        parts.append(
+            "You are a helpful personal assistant. "
+            "You have access to tools for querying health, nutrition, fitness, "
+            "finance, and personal data. Be concise and direct."
+        )
 
     now = datetime.now()
     utc_now = datetime.now(timezone.utc)
