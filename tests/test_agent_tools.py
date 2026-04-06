@@ -1,6 +1,7 @@
 """Tests for agent tools and chat service helpers."""
 
 import json
+from unittest.mock import patch, MagicMock
 
 from kaori.services.agent_chat_service import _estimate_tokens, _build_system_prompt
 
@@ -21,18 +22,30 @@ class TestTokenEstimation:
         assert _estimate_tokens("") == 0
 
 
+def _no_personality_file():
+    """Patch Path so ~/.kaori-agent/personality.md is not found."""
+    mock_path = MagicMock()
+    mock_path.expanduser.return_value = mock_path
+    mock_path.exists.return_value = False
+    return patch(
+        "kaori.services.agent_chat_service.Path", return_value=mock_path,
+    )
+
+
 class TestBuildSystemPrompt:
     def test_basic(self):
-        prompt = _build_system_prompt(memory_entries=[], active_prompt=None)
+        with _no_personality_file():
+            prompt = _build_system_prompt(memory_entries=[], active_prompt=None)
         assert "helpful personal assistant" in prompt
         assert "Current date and time" in prompt
 
     def test_with_memory(self):
-        entries = [
-            {"key": "name", "value": "Dehua"},
-            {"key": "lang", "value": "bilingual"},
-        ]
-        prompt = _build_system_prompt(memory_entries=entries)
+        with _no_personality_file():
+            entries = [
+                {"key": "name", "value": "Dehua"},
+                {"key": "lang", "value": "bilingual"},
+            ]
+            prompt = _build_system_prompt(memory_entries=entries)
         assert "name: Dehua" in prompt
         assert "lang: bilingual" in prompt
         assert "Things I remember" in prompt
@@ -43,11 +56,27 @@ class TestBuildSystemPrompt:
             active_prompt={"prompt_text": "You are Kaori, a caring assistant."},
         )
         assert "Kaori, a caring assistant" in prompt
-        # Base instructions should still be there
-        assert "helpful personal assistant" in prompt
+        # Custom personality should replace default, not coexist
+        assert "helpful personal assistant" not in prompt
+        # Tool capabilities note should still be present
+        assert "tools for querying health" in prompt
+
+    def test_personality_file_fallback(self):
+        """When no DB prompt is active, fall back to personality file."""
+        mock_path = MagicMock()
+        mock_path.expanduser.return_value = mock_path
+        mock_path.exists.return_value = True
+        mock_path.read_text.return_value = "You are a cheerful bot."
+        with patch(
+            "kaori.services.agent_chat_service.Path", return_value=mock_path,
+        ):
+            prompt = _build_system_prompt(memory_entries=[], active_prompt=None)
+        assert "cheerful bot" in prompt
+        assert "helpful personal assistant" not in prompt
 
     def test_resumed_session(self):
-        prompt = _build_system_prompt(memory_entries=[], is_resumed=True)
+        with _no_personality_file():
+            prompt = _build_system_prompt(memory_entries=[], is_resumed=True)
         assert "continuation of a previous conversation" in prompt
 
 
