@@ -2,7 +2,7 @@
 
 Every feature in Kaori is a **card type**. Each card has a design doc here covering its backend data model, API endpoints, and feed integration.
 
-**When adding or modifying a card, update its doc here.** See `CLAUDE.md` for the full checklist.
+**When adding or modifying a card, read `HOWTO.md` for the full-stack checklist (backend + iOS).** Update this doc and the per-card doc when done.
 
 ## Cards
 

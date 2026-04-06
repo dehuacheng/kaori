@@ -212,24 +212,11 @@ Each card type is defined in `models/card.py` (`CardType` enum). Current types: 
 ### Feed Service Registry
 `services/feed_service.py` uses a `CARD_LOADERS` dict to aggregate data. Each loader is an async function `(date_str, group) -> None` that populates a `FeedDateGroup`. No hardcoded if-blocks per card type.
 
-### Adding a New Card Type (Backend)
-1. **Write a card design doc** at `docs/cards/<type>.md` (see `docs/cards/README.md` for template)
-2. Add enum value to `CardType` in `models/card.py`
-3. Create domain files: `models/xxx.py`, `storage/xxx_repo.py`, `services/xxx_service.py`, `api/xxx.py`
-4. Add loader function + 1 line in `CARD_LOADERS` dict in `services/feed_service.py`
-5. Add 1 line in `_DEFAULTS` dict in `storage/card_preference_repo.py`
-6. Add 1 line: `api_router.include_router(xxx.router)` in `api/router.py`
-7. Add SQL tables to `database.py` SCHEMA (following raw/analysis/override pattern)
-8. Add prompt to `kaori/llm/prompts.py` (if LLM-powered)
+### Adding or Editing a Card
+**Read `docs/cards/HOWTO.md` first** — it has the full-stack checklist (backend + iOS), file-by-file, with the items-based vs singleton distinction. Covers both new cards and common edit patterns (adding fields, changing swipe actions, etc.).
 
-### Modifying an Existing Card Type
-- All changes to a card's data, API, or behavior stay within that card's domain files
-- If a change affects how the card appears in the feed, update its loader in `feed_service.py`
-- If a change affects card configuration, update `card_preference_repo.py`
-- **Update the card's design doc** in `docs/cards/<type>.md` to reflect the change
-
-### Card Design Docs
-Every card type has a design doc at `docs/cards/<type>.md` covering tables, API endpoints, feed loader, and key files. See `docs/cards/README.md` for the index and template. **These docs must be kept in sync with the code.**
+- Per-card design docs: `docs/cards/<type>.md` (index: `docs/cards/README.md`)
+- Simplest reference card: Post (`models/post.py`, `storage/post_repo.py`, `services/post_service.py`, `api/post.py`)
 
 ### Card Preferences
 Per-card-type enable/disable stored in `card_preferences` table. Exposed via `GET/PUT /api/feed/card-preferences`. The iOS app hides disabled cards from feed, "+" menu, and Data tab.
