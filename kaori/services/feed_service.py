@@ -10,7 +10,7 @@ from typing import Callable, Awaitable
 
 from kaori.models.card import CardType, FeedItem, FeedDateGroup, FeedResponse, CardPreference
 from kaori.storage import card_preference_repo, meal_repo, weight_repo, summary_repo, post_repo
-from kaori.services import meal_service, workout_service, portfolio_service, reminder_service
+from kaori.services import meal_service, workout_service, portfolio_service, reminder_service, weather_service
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,12 @@ async def _load_reminders(date_str: str, group: FeedDateGroup) -> None:
         ))
 
 
+async def _load_weather(date_str: str, group: FeedDateGroup) -> None:
+    weather = await weather_service.get_weather_for_date(date_str)
+    if weather and (weather.get("current") or weather.get("forecast")):
+        group.weather = weather
+
+
 # Registry: CardType → loader function
 # To add a new card type, add ONE line here.
 _CardLoader = Callable[[str, FeedDateGroup], Awaitable[None]]
@@ -105,6 +111,7 @@ CARD_LOADERS: dict[str, _CardLoader] = {
     CardType.PORTFOLIO: _load_portfolio,
     CardType.POST: _load_posts,
     CardType.REMINDER: _load_reminders,
+    CardType.WEATHER: _load_weather,
 }
 
 

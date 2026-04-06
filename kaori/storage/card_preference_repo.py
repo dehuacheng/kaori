@@ -14,6 +14,7 @@ _DEFAULTS = {
     CardType.POST: (True, False, 99),
     CardType.REMINDER: (True, True, 3),
     CardType.AGENT_SESSION: (True, False, 99),
+    CardType.WEATHER: (True, True, 4),
 }
 
 

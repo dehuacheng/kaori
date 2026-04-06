@@ -18,6 +18,7 @@ Every feature in Kaori is a **card type**. Each card has a design doc here cover
 | `post` | [post.md](post.md) | posts | `_load_posts` |
 | `reminder` | [reminder.md](reminder.md) | reminders | `_load_reminders` |
 | `agent_session` | [agent.md](agent.md) | agent_sessions, agent_messages, agent_memory, agent_compactions, agent_prompts | (future) |
+| `weather` | [weather.md](weather.md) | weather_location, weather_cache | `_load_weather` |
 
 ## Template for New Cards
 

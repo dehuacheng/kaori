@@ -315,6 +315,39 @@ CREATE INDEX IF NOT EXISTS idx_posts_date ON posts(date);
 CREATE INDEX IF NOT EXISTS idx_reminders_due_date ON reminders(due_date);
 CREATE INDEX IF NOT EXISTS idx_reminders_active ON reminders(is_done, due_date);
 
+-- Weather location (single row — one user)
+CREATE TABLE IF NOT EXISTS weather_location (
+    id           INTEGER PRIMARY KEY CHECK(id = 1),
+    latitude     REAL NOT NULL,
+    longitude    REAL NOT NULL,
+    name         TEXT,
+    updated_at   TEXT DEFAULT (datetime('now'))
+);
+
+-- Weather cache (current conditions + forecasts)
+CREATE TABLE IF NOT EXISTS weather_cache (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    date          TEXT NOT NULL,
+    weather_type  TEXT NOT NULL CHECK(weather_type IN ('current', 'forecast')),
+    temperature   REAL,
+    feels_like    REAL,
+    temp_high     REAL,
+    temp_low      REAL,
+    humidity      INTEGER,
+    wind_speed    REAL,
+    weather_code  INTEGER,
+    condition     TEXT,
+    icon          TEXT,
+    precipitation REAL,
+    uv_index      REAL,
+    sunrise       TEXT,
+    sunset        TEXT,
+    data_json     TEXT,
+    fetched_at    TEXT DEFAULT (datetime('now')),
+    created_at    TEXT DEFAULT (datetime('now')),
+    UNIQUE(date, weather_type)
+);
+
 -- Agent chat sessions
 CREATE TABLE IF NOT EXISTS agent_sessions (
     id          TEXT    PRIMARY KEY,
@@ -595,6 +628,7 @@ async def _migrate_card_preferences(db: aiosqlite.Connection):
         "post": (1, 0, 99),
         "reminder": (1, 1, 3),
         "agent_session": (1, 0, 99),
+        "weather": (1, 1, 4),
     }
     cursor = await db.execute("SELECT card_type FROM card_preferences")
     existing = {row[0] for row in await cursor.fetchall()}

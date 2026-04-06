@@ -14,6 +14,7 @@ class CardType(str, Enum):
     POST = "post"
     REMINDER = "reminder"
     AGENT_SESSION = "agent_session"
+    WEATHER = "weather"
 
 
 class CardPreference(BaseModel):
@@ -45,6 +46,7 @@ class FeedDateGroup(BaseModel):
     nutrition_totals: dict | None = None
     summary: dict | None = None
     portfolio: dict | None = None
+    weather: dict | None = None
 
 
 class FeedResponse(BaseModel):
