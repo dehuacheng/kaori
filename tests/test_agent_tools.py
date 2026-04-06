@@ -109,7 +109,7 @@ class TestDefaultTools:
         from kaori.services.agent_tools import get_default_tools
 
         tools = get_default_tools()
-        assert len(tools) == 9
+        assert len(tools) == 17
 
     def test_tool_names(self):
         from kaori.services.agent_tools import get_default_tools
@@ -118,11 +118,19 @@ class TestDefaultTools:
         names = {t.name for t in tools}
         assert "get_feed" in names
         assert "get_meals" in names
+        assert "get_meal_detail" in names
         assert "get_weight" in names
         assert "get_profile" in names
         assert "get_portfolio_summary" in names
+        assert "get_financial_accounts" in names
+        assert "get_account_holdings" in names
         assert "get_workouts" in names
+        assert "get_workout_detail" in names
         assert "get_reminders" in names
+        assert "get_daily_summary" in names
+        assert "get_weekly_summary" in names
+        assert "get_meal_streak" in names
+        assert "get_exercise_types" in names
         assert "save_memory" in names
         assert "get_memory" in names
 

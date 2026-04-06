@@ -440,26 +440,67 @@ _OPENAI_BACKENDS = {
     "openai": ("OPENAI_API_KEY", "https://api.openai.com/v1"),
 }
 
+_KAORI_AGENT_CONFIG = os.path.expanduser("~/.kaori-agent/config.yaml")
+
+
+def _load_kaori_agent_config() -> dict:
+    """Load kaori-agent config.yaml if it exists (single-user, shared config)."""
+    try:
+        import yaml  # noqa: F811
+        with open(_KAORI_AGENT_CONFIG) as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
 
 def get_agent_backend(
     backend_name: str | None = None,
     api_key: str | None = None,
 ) -> AgentLLMBackend:
-    """Create an agent LLM backend from env vars or explicit config.
+    """Create an agent LLM backend from env vars or kaori-agent config.
 
-    backend_name: "anthropic", "deepseek", "kimi", "openai"
-    Falls back to KAORI_AGENT_BACKEND env var, then "anthropic".
+    Resolution order:
+      1. Explicit arguments (backend_name, api_key)
+      2. KAORI_AGENT_BACKEND / per-backend env vars
+      3. ~/.kaori-agent/config.yaml (shared with kaori-agent CLI)
+      4. Default: "anthropic"
     """
-    name = backend_name or os.environ.get("KAORI_AGENT_BACKEND", "anthropic")
+    # Load shared config as fallback
+    cfg = _load_kaori_agent_config()
+
+    name = (
+        backend_name
+        or os.environ.get("KAORI_AGENT_BACKEND")
+        or cfg.get("backend")
+        or "anthropic"
+    )
 
     if name == "anthropic":
-        return AnthropicAgentBackend(api_key=api_key)
+        key = (
+            api_key
+            or os.environ.get("ANTHROPIC_API_KEY")
+            or (cfg.get("anthropic") or {}).get("api_key")
+        )
+        return AnthropicAgentBackend(api_key=key)
 
     if name in _OPENAI_BACKENDS:
         env_key, base_url = _OPENAI_BACKENDS[name]
-        key = api_key or os.environ.get(env_key)
+        key = (
+            api_key
+            or os.environ.get(env_key)
+            or (cfg.get(name) or {}).get("api_key")
+        )
         if not key:
             raise AgentLLMError(f"{env_key} not set for backend '{name}'")
         return OpenAIAgentBackend(api_key=key, base_url=base_url, name=name)
 
     raise AgentLLMError(f"Unknown agent backend: {name}")
+
+
+def get_agent_default_model() -> str | None:
+    """Return the default model from kaori-agent config, or None."""
+    cfg = _load_kaori_agent_config()
+    backend_name = cfg.get("backend")
+    if backend_name and backend_name in cfg:
+        return cfg[backend_name].get("model")
+    return None

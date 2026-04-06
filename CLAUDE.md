@@ -152,13 +152,15 @@ KAORI_API_TOKEN=<token> python -m kaori.mcp_server
 ## Agent Chat API
 
 Kaori backend hosts an AI agent chat service with SSE streaming. The agent can
-query all kaori data via 9 server-side tools (no HTTP round-trip — calls services directly).
+query all kaori data via 17 server-side tools (no HTTP round-trip — calls services directly).
+Full parity with the MCP server tools plus 2 agent-only memory tools.
 
-**Dependencies:** `pip install -e ".[agent]"` (adds `anthropic`, `openai` SDKs)
+**Dependencies:** `pip install -e ".[agent]"` (adds `anthropic`, `openai` SDKs + `pyyaml`)
 
-**Config via env vars:**
-- `KAORI_AGENT_BACKEND` — `anthropic` (default), `deepseek`, `openai`, `kimi`
-- `ANTHROPIC_API_KEY` / `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` — API key for chosen backend
+**Config (resolution order):**
+1. Environment vars: `KAORI_AGENT_BACKEND`, `DEEPSEEK_API_KEY`, etc.
+2. Shared config: `~/.kaori-agent/config.yaml` (same file used by kaori-agent CLI)
+3. Defaults: `anthropic` backend, `claude-sonnet-4-6` model
 
 **Endpoints:**
 - `POST /api/agent/chat` — SSE streaming chat (body: `{message, session_id?}`)

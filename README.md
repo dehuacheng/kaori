@@ -20,7 +20,7 @@ Kaori is a FastAPI backend that tracks meals, weight, workouts, and more — wit
 - **Multi-LLM support** — Claude CLI, Anthropic API, or Codex CLI (ChatGPT). Switchable per-user.
 - **Notifications & AI summaries** — Configurable meal/weight reminders. LLM-generated daily and weekly health summaries with persistent storage.
 - **Financial accounts** — Track brokerage portfolio value across multiple accounts (Schwab, Fidelity, Moomoo, etc.). Import holdings via screenshot or PDF with LLM extraction. Daily portfolio change card on the feed with live prices via yfinance. Snapshot system for historical values.
-- **AI agent chat** — SSE-streaming chat endpoint with agentic tool loop. The agent can query all your kaori data (meals, weight, workouts, portfolio, reminders) via 9 server-side tools. Supports session persistence, cross-session memory, personal prompts, and transcript compaction. Swappable LLM backends (Anthropic, DeepSeek, OpenAI).
+- **AI agent chat** — SSE-streaming chat endpoint with agentic tool loop. The agent can query all your kaori data (meals, weight, workouts, portfolio, reminders) via 17 server-side tools. Supports session persistence, cross-session memory, personal prompts, and transcript compaction. Swappable LLM backends (Anthropic, DeepSeek, OpenAI).
 
 ### Setup
 

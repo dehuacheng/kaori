@@ -9,7 +9,9 @@ import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
 
-from kaori.llm.agent_backend import AgentLLMBackend, StreamEvent, get_agent_backend
+from kaori.llm.agent_backend import (
+    AgentLLMBackend, StreamEvent, get_agent_backend, get_agent_default_model,
+)
 from kaori.services import agent_service
 from kaori.services.agent_engine import run_turn_stream
 from kaori.services.agent_tools import get_default_tools
@@ -134,7 +136,7 @@ async def chat(
         )
 
     sid = session["id"]
-    model = session.get("model") or _DEFAULT_MODEL
+    model = session.get("model") or get_agent_default_model() or _DEFAULT_MODEL
 
     yield {"type": "session", "session_id": sid, "title": session.get("title")}
 
@@ -165,12 +167,15 @@ async def chat(
 
     # --- Run turn loop with streaming ---
     msg_count_before = len(messages)
+    thinking_parts: list[str] = []  # accumulate thinking across tool loops
+    tool_outputs: dict[str, str] = {}  # tool_call_id -> output
 
     try:
         async for event in run_turn_stream(
             backend, messages, tools, system_prompt, model, _DEFAULT_MAX_TOKENS,
         ):
             if event.type == "thinking":
+                thinking_parts.append(event.text)
                 yield {"type": "thinking", "text": event.text}
             elif event.type == "text":
                 yield {"type": "text", "text": event.text}
@@ -181,14 +186,25 @@ async def chat(
                     "name": tc.name if tc else event.text,
                     "input": tc.input if tc else {},
                 }
+            elif event.type == "tool_result":
+                tc = event.tool_call
+                if tc:
+                    tool_outputs[tc.id] = event.text or ""
+                yield {
+                    "type": "tool_result",
+                    "name": tc.name if tc else "",
+                    "output": event.text or "",
+                }
     except Exception as e:
         logger.error("Agent chat error: %s", e)
         yield {"type": "error", "message": str(e)}
         return
 
-    # --- Persist new messages (assistant + tool results added by engine) ---
+    # --- Persist new messages with metadata ---
+    thinking_text = "".join(thinking_parts)
     new_messages = messages[msg_count_before:]
     total_tokens = 0
+    first_assistant = True
     for msg in new_messages:
         role = msg.get("role", "assistant")
         if role == "tool":
@@ -197,6 +213,25 @@ async def chat(
             first = msg["content"][0] if msg["content"] else {}
             if isinstance(first, dict) and first.get("type") == "tool_result":
                 role = "tool_result"
+
+        # Inject thinking text into the first assistant message
+        if role == "assistant" and first_assistant and thinking_text:
+            msg["_thinking"] = thinking_text
+            first_assistant = False
+
+        # Inject tool outputs into tool_result messages
+        if role == "tool_result":
+            if isinstance(msg.get("content"), list):
+                # Anthropic format: [{type: "tool_result", tool_use_id, content}]
+                for block in msg["content"]:
+                    tc_id = block.get("tool_use_id", "")
+                    if tc_id in tool_outputs:
+                        block["_output"] = tool_outputs[tc_id]
+            elif "tool_call_id" in msg:
+                # OpenAI format: {role: "tool", tool_call_id, content}
+                tc_id = msg["tool_call_id"]
+                if tc_id in tool_outputs:
+                    msg["_output"] = tool_outputs[tc_id]
 
         content_json = json.dumps(msg, ensure_ascii=False)
         tokens = _estimate_tokens(content_json)

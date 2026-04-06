@@ -141,6 +141,131 @@ class GetRemindersTool(BaseTool):
         return ToolResult(output=_format(result))
 
 
+class GetMealDetailTool(BaseTool):
+    name = "get_meal_detail"
+    description = "Get detailed information about a specific meal — nutrition breakdown, analysis."
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "meal_id": {"type": "integer", "description": "The meal ID to look up."},
+        },
+        "required": ["meal_id"],
+    }
+
+    async def execute(self, meal_id: int, **kw) -> ToolResult:
+        from kaori.services import meal_service
+        result = await meal_service.get_by_id(meal_id)
+        if not result:
+            return ToolResult(output=f"Meal {meal_id} not found", is_error=True)
+        return ToolResult(output=_format(result))
+
+
+class GetWorkoutDetailTool(BaseTool):
+    name = "get_workout_detail"
+    description = "Get detailed workout info — all exercises with sets, reps, weights."
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "workout_id": {"type": "integer", "description": "The workout ID to look up."},
+        },
+        "required": ["workout_id"],
+    }
+
+    async def execute(self, workout_id: int, **kw) -> ToolResult:
+        from kaori.storage import workout_repo
+        result = await workout_repo.get_workout(workout_id)
+        if not result:
+            return ToolResult(output=f"Workout {workout_id} not found", is_error=True)
+        return ToolResult(output=_format(result))
+
+
+class GetFinancialAccountsTool(BaseTool):
+    name = "get_financial_accounts"
+    description = "List all financial/brokerage accounts with their types and institutions."
+    input_schema = {"type": "object", "properties": {}}
+
+    async def execute(self, **kw) -> ToolResult:
+        from kaori.services import portfolio_service
+        result = await portfolio_service.list_accounts()
+        return ToolResult(output=_format(result))
+
+
+class GetAccountHoldingsTool(BaseTool):
+    name = "get_account_holdings"
+    description = "Get holdings (stocks, ETFs, cash) in a specific financial account."
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "account_id": {"type": "integer", "description": "The account ID to look up."},
+        },
+        "required": ["account_id"],
+    }
+
+    async def execute(self, account_id: int, **kw) -> ToolResult:
+        from kaori.services import portfolio_service
+        result = await portfolio_service.list_holdings(account_id)
+        return ToolResult(output=_format(result))
+
+
+class GetDailySummaryTool(BaseTool):
+    name = "get_daily_summary"
+    description = "Get the AI-generated daily health summary (meals, nutrition, weight, activity)."
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "date": {"type": "string", "description": "Date YYYY-MM-DD. Defaults to today."},
+        },
+    }
+
+    async def execute(self, date: str = "", **kw) -> ToolResult:
+        from kaori.storage import summary_repo
+        target = date or __import__("datetime").date.today().isoformat()
+        result = await summary_repo.get_latest("daily", target)
+        if not result:
+            return ToolResult(output=f"No daily summary for {target}")
+        return ToolResult(output=_format(result))
+
+
+class GetWeeklySummaryTool(BaseTool):
+    name = "get_weekly_summary"
+    description = "Get the AI-generated weekly health summary (trends, patterns, recommendations)."
+    input_schema = {"type": "object", "properties": {}}
+
+    async def execute(self, **kw) -> ToolResult:
+        from kaori.services import summary_service
+        result = await summary_service.get_weekly_detail()
+        if not result:
+            return ToolResult(output="No weekly summary available")
+        return ToolResult(output=_format(result))
+
+
+class GetMealStreakTool(BaseTool):
+    name = "get_meal_streak"
+    description = "Get the current meal logging streak (consecutive days with logged meals)."
+    input_schema = {"type": "object", "properties": {}}
+
+    async def execute(self, **kw) -> ToolResult:
+        from kaori.storage import meal_repo
+        streak = await meal_repo.get_logging_streak()
+        return ToolResult(output=f"Current meal logging streak: {streak} days")
+
+
+class GetExerciseTypesTool(BaseTool):
+    name = "get_exercise_types"
+    description = "List available exercise types for workout logging."
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "category": {"type": "string", "description": "Filter by category (chest, back, legs, etc.). Empty for all."},
+        },
+    }
+
+    async def execute(self, category: str = "", **kw) -> ToolResult:
+        from kaori.services import workout_service
+        result = await workout_service.list_exercise_types(category=category or None)
+        return ToolResult(output=_format(result))
+
+
 # ---------------------------------------------------------------------------
 # Agent memory tools
 # ---------------------------------------------------------------------------
@@ -207,11 +332,19 @@ def get_default_tools(session_id: str | None = None) -> list[BaseTool]:
     return [
         GetFeedTool(),
         GetMealsTool(),
+        GetMealDetailTool(),
         GetWeightTool(),
         GetProfileTool(),
         GetPortfolioSummaryTool(),
+        GetFinancialAccountsTool(),
+        GetAccountHoldingsTool(),
         GetWorkoutsTool(),
+        GetWorkoutDetailTool(),
         GetRemindersTool(),
+        GetDailySummaryTool(),
+        GetWeeklySummaryTool(),
+        GetMealStreakTool(),
+        GetExerciseTypesTool(),
         SaveMemoryTool(session_id=session_id),
         GetMemoryTool(),
     ]

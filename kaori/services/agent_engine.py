@@ -42,7 +42,7 @@ async def run_turn_stream(
         if turn_result.stop_reason != "tool_use" or not turn_result.tool_calls:
             return
 
-        # Execute tools and yield status events
+        # Execute tools and yield status/result events
         tool_results: list[ToolResult] = []
         for tc in turn_result.tool_calls:
             yield StreamEvent(type="tool_use", text=f"calling {tc.name}", tool_call=tc)
@@ -55,5 +55,6 @@ async def run_turn_stream(
                 except Exception as e:
                     res = ToolResult(output=f"Tool execution error: {e}", is_error=True)
             tool_results.append(res)
+            yield StreamEvent(type="tool_result", text=res.output, tool_call=tc)
 
         messages.extend(backend.make_tool_results(turn_result.tool_calls, tool_results))

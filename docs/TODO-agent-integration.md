@@ -69,7 +69,7 @@ Added beyond original TODO scope:
 |------|---------|
 | `kaori/llm/agent_backend.py` | AgentLLMBackend ABC + Anthropic/OpenAI implementations |
 | `kaori/services/agent_engine.py` | Agentic turn loop (ported from kaori-agent) |
-| `kaori/services/agent_tools.py` | 9 server-side tools calling kaori services directly |
+| `kaori/services/agent_tools.py` | 17 server-side tools calling kaori services directly (full MCP parity + memory) |
 | `kaori/services/agent_chat_service.py` | Chat orchestration + SSE event generation |
 
 ### 9. Feed integration (future)
@@ -79,7 +79,8 @@ session as a feed card (session title + last message preview).
 
 ## Config
 
-The agent chat backend needs LLM API keys:
-- `ANTHROPIC_API_KEY` — for Anthropic backend (reuses existing)
-- `DEEPSEEK_API_KEY` — for DeepSeek backend (new)
-- `KAORI_AGENT_BACKEND` — backend selection (default: "anthropic")
+Resolution order: explicit args → env vars → `~/.kaori-agent/config.yaml` → defaults.
+
+- `KAORI_AGENT_BACKEND` — backend selection (or `backend` key in config.yaml)
+- `DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` — or per-backend `api_key` in config.yaml
+- Model read from config.yaml per-backend `model` key, falls back to `claude-sonnet-4-6`
