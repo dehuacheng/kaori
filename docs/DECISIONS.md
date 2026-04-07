@@ -182,3 +182,9 @@
 **User intent:** Expose agent session data via REST API and add an SSE streaming chat endpoint so the iOS app can have a Chat tab for AI agent conversations. The agent engine (agentic turn loop with tool_use) should run server-side on the kaori backend, not on the iOS client.
 
 **Outcome:** Implemented full agent integration: 5 storage repos, service layer, 14 REST endpoints (sessions/memory/prompts CRUD + SSE chat), new `AgentLLMBackend` abstraction (Anthropic + OpenAI-compatible backends), agentic turn loop ported from kaori-agent, 9 server-side tools calling kaori services directly. Added `AGENT_SESSION` to CardType enum. Chat endpoint streams events (thinking/text/tool_use/done) via SSE.
+
+### 2026-04-07 — Bug fix: Portfolio card should freeze at market close
+
+**User intent:** After market close, the portfolio feed card should show frozen end-of-day values instead of continuing to fetch/display stale or zeroed-out data. The card was showing $0 day change after hours due to a price substitution bug.
+
+**Outcome:** Two fixes: (1) Removed `previous_close` price substitution in `stock_price_service._fetch_from_yfinance()` — always use `last_price` so day-change calculations remain correct after hours. (2) Changed `portfolio_service.get_portfolio_summary()` to auto-create and serve a snapshot on first request after market close, freezing the card at close values for the rest of the day.

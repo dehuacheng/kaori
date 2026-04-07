@@ -298,8 +298,19 @@ async def get_portfolio_summary(target_date: str) -> dict:
             "last_updated": None,
         }
 
-    if is_today:
-        return await _build_live_summary(target_date, accounts, is_live)
+    if is_today and is_live:
+        # Market is open — serve live data
+        return await _build_live_summary(target_date, accounts, is_live=True)
+    elif is_today and not is_live:
+        # Market closed today — freeze at close: serve snapshot, auto-create if missing
+        snapshot = await portfolio_snapshot_repo.get_snapshot(target_date, account_id=None)
+        if not snapshot:
+            await take_snapshot(target_date)
+            snapshot = await portfolio_snapshot_repo.get_snapshot(target_date, account_id=None)
+        if snapshot:
+            return await _build_snapshot_summary(target_date, accounts, snapshot)
+        # Fallback if snapshot creation failed
+        return await _build_live_summary(target_date, accounts, is_live=False)
     else:
         # Past dates: only show data if a snapshot was taken that day
         snapshot = await portfolio_snapshot_repo.get_snapshot(target_date, account_id=None)

@@ -35,8 +35,6 @@ async def _fetch_from_yfinance(tickers: list[str]) -> dict[str, dict]:
     if not tickers:
         return {}
 
-    market_open = _is_market_hours()
-
     def _fetch():
         import yfinance as yf
         results = {}
@@ -47,12 +45,9 @@ async def _fetch_from_yfinance(tickers: list[str]) -> dict[str, dict]:
                 info = t.fast_info
                 last = float(info.last_price)
                 prev = float(info.previous_close) if info.previous_close else None
-                # Outside market hours, use previous_close as price
-                # to avoid showing pre/post-market movements
-                price = last if market_open else (prev or last)
                 results[ticker] = {
                     "ticker": ticker,
-                    "price": price,
+                    "price": last,
                     "previous_close": prev,
                 }
             except Exception as e:
