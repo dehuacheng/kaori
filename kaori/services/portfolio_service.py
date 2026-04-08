@@ -38,6 +38,28 @@ def _extract_json(text: str) -> dict:
     raise ValueError(f"Could not extract JSON from LLM response (length={len(text)}): {text[:200]}...")
 
 
+async def _get_snapshot_prices(
+    tickers: list[str],
+    target_date: str,
+    *,
+    use_historical_close: bool = False,
+) -> dict[str, dict]:
+    """Get prices for snapshots, preferring regular-session closes when requested."""
+    if not tickers:
+        return {}
+
+    if not use_historical_close:
+        return await stock_price_service.get_prices(tickers)
+
+    prices = await stock_price_service.get_close_prices_for_date(tickers, target_date)
+    missing = [ticker for ticker in tickers if ticker not in prices]
+    if missing:
+        # Fall back to cached/live quotes for symbols where historical daily bars
+        # are unavailable (for example some funds or data-provider gaps).
+        prices.update(await stock_price_service.get_prices(missing))
+    return prices
+
+
 async def list_accounts(account_type: str | None = None) -> list[dict]:
     accounts = await financial_account_repo.list_accounts(account_type)
     # Enrich with holdings count per account
@@ -305,7 +327,7 @@ async def get_portfolio_summary(target_date: str) -> dict:
         # Market closed today — freeze at close: serve snapshot, auto-create if missing
         snapshot = await portfolio_snapshot_repo.get_snapshot(target_date, account_id=None)
         if not snapshot:
-            await take_snapshot(target_date)
+            await take_snapshot(target_date, use_historical_close=True)
             snapshot = await portfolio_snapshot_repo.get_snapshot(target_date, account_id=None)
         if snapshot:
             return await _build_snapshot_summary(target_date, accounts, snapshot)
@@ -436,7 +458,11 @@ async def _build_snapshot_summary(target_date: str, accounts: list[dict], combin
     }
 
 
-async def take_snapshot(target_date: str | None = None) -> dict:
+async def take_snapshot(
+    target_date: str | None = None,
+    *,
+    use_historical_close: bool = False,
+) -> dict:
     """Take a snapshot of all brokerage accounts for the given date (default: today)."""
     target_date = target_date or date.today().isoformat()
     accounts = await financial_account_repo.list_accounts("brokerage")
@@ -451,7 +477,11 @@ async def take_snapshot(target_date: str | None = None) -> dict:
             if h["ticker"] not in ("CASH", "MONEY_MARKET"):
                 all_tickers.add(h["ticker"])
 
-    prices = await stock_price_service.get_prices(list(all_tickers))
+    prices = await _get_snapshot_prices(
+        list(all_tickers),
+        target_date,
+        use_historical_close=use_historical_close,
+    )
 
     combined_value = 0.0
     combined_cost = 0.0

@@ -47,7 +47,7 @@ All under `/api/finance`.
 ### Portfolio Summary
 - `GET /api/finance/portfolio/summary?date=YYYY-MM-DD` — combined + per-account values, day change, top movers
 - `POST /api/finance/portfolio/refresh-prices` — force refresh
-- `POST /api/finance/portfolio/snapshot` — manual end-of-day snapshot
+- `POST /api/finance/portfolio/snapshot` — manual snapshot; pass `use_historical_close=true` to rebuild a day from regular-session close prices
 
 ### Sync Status
 - `GET /api/finance/accounts/{id}/sync-status` — connection health

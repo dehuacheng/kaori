@@ -49,7 +49,7 @@ None. Account management is under More > Finances.
 
 - `GET /api/finance/portfolio/summary?date=YYYY-MM-DD` — combined + per-account, live or snapshot
 - `POST /api/finance/portfolio/refresh-prices` — force price refresh
-- `POST /api/finance/portfolio/snapshot` — manual end-of-day snapshot
+- `POST /api/finance/portfolio/snapshot` — manual snapshot; `use_historical_close=true` rebuilds a day from regular-session close prices
 - Account/holdings CRUD under `/api/finance/accounts/...`
 - Import: `POST /api/finance/accounts/{id}/import` → `GET /api/finance/imports/{id}` → `POST /api/finance/imports/{id}/confirm`
 

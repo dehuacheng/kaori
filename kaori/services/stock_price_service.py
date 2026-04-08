@@ -58,6 +58,45 @@ async def _fetch_from_yfinance(tickers: list[str]) -> dict[str, dict]:
     return await loop.run_in_executor(None, _fetch)
 
 
+async def get_close_prices_for_date(tickers: list[str], target_date: str) -> dict[str, dict]:
+    """Fetch regular-session close prices for a specific trading date."""
+    if not tickers:
+        return {}
+
+    def _fetch():
+        import yfinance as yf
+        results = {}
+        data = yf.Tickers(" ".join(tickers))
+        for ticker in tickers:
+            try:
+                t = data.tickers[ticker]
+                hist = t.history(period="10d", interval="1d", auto_adjust=False, prepost=False)
+                if hist.empty:
+                    continue
+
+                closes = []
+                for idx, row in hist.dropna(subset=["Close"]).iterrows():
+                    closes.append((idx.date().isoformat(), float(row["Close"])))
+
+                target_idx = next((i for i, (day, _) in enumerate(closes) if day == target_date), None)
+                if target_idx is None:
+                    continue
+
+                close_price = closes[target_idx][1]
+                previous_close = closes[target_idx - 1][1] if target_idx > 0 else None
+                results[ticker] = {
+                    "ticker": ticker,
+                    "price": close_price,
+                    "previous_close": previous_close,
+                }
+            except Exception as e:
+                logger.warning("Failed to fetch close price for %s on %s: %s", ticker, target_date, e)
+        return results
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _fetch)
+
+
 async def get_prices(tickers: list[str]) -> dict[str, dict]:
     """Get current prices for tickers, using cache when fresh enough."""
     if not tickers:

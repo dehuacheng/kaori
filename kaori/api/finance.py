@@ -240,5 +240,11 @@ async def refresh_prices():
 
 
 @router.post("/portfolio/snapshot")
-async def take_snapshot(date: str | None = None):
-    return await portfolio_service.take_snapshot(date)
+async def take_snapshot(
+    date: str | None = None,
+    use_historical_close: bool = False,
+):
+    return await portfolio_service.take_snapshot(
+        date,
+        use_historical_close=use_historical_close,
+    )

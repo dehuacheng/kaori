@@ -1,7 +1,8 @@
-"""Tests for portfolio_service: _extract_json and _compute_account_value."""
+"""Tests for portfolio_service helpers."""
 
 import pytest
 
+from kaori.services import portfolio_service
 from kaori.services.portfolio_service import _extract_json, _compute_account_value
 
 
@@ -108,3 +109,76 @@ class TestComputeAccountValue:
         prices = {"AAPL": {"price": 200, "previous_close": 195}}
         result = _compute_account_value(holdings, prices)
         assert result["total_gain"] is None
+
+
+@pytest.mark.asyncio
+async def test_snapshot_prices_prefer_historical_close(monkeypatch):
+    async def fake_close_prices(tickers, target_date):
+        assert tickers == ["AAPL", "MSFT"]
+        assert target_date == "2026-04-08"
+        return {
+            "AAPL": {"price": 210.0, "previous_close": 200.0},
+        }
+
+    async def fake_live_prices(tickers):
+        assert tickers == ["MSFT"]
+        return {
+            "MSFT": {"price": 410.0, "previous_close": 405.0},
+        }
+
+    monkeypatch.setattr(portfolio_service.stock_price_service, "get_close_prices_for_date", fake_close_prices)
+    monkeypatch.setattr(portfolio_service.stock_price_service, "get_prices", fake_live_prices)
+
+    result = await portfolio_service._get_snapshot_prices(
+        ["AAPL", "MSFT"],
+        "2026-04-08",
+        use_historical_close=True,
+    )
+
+    assert result == {
+        "AAPL": {"price": 210.0, "previous_close": 200.0},
+        "MSFT": {"price": 410.0, "previous_close": 405.0},
+    }
+
+
+@pytest.mark.asyncio
+async def test_take_snapshot_can_force_historical_close(monkeypatch):
+    async def fake_list_accounts(account_type):
+        assert account_type == "brokerage"
+        return [{"id": 1, "name": "Brokerage", "institution": "Test"}]
+
+    async def fake_list_by_account(account_id):
+        assert account_id == 1
+        return [{"ticker": "AAPL", "shares": 10, "cost_basis": 150}]
+
+    async def fake_get_snapshot_prices(tickers, target_date, *, use_historical_close):
+        assert tickers == ["AAPL"]
+        assert target_date == "2026-04-08"
+        assert use_historical_close is True
+        return {"AAPL": {"price": 210.0, "previous_close": 200.0}}
+
+    saved = []
+
+    async def fake_save_snapshot(**kwargs):
+        saved.append(kwargs)
+        return len(saved)
+
+    monkeypatch.setattr(portfolio_service.financial_account_repo, "list_accounts", fake_list_accounts)
+    monkeypatch.setattr(portfolio_service.portfolio_holding_repo, "list_by_account", fake_list_by_account)
+    monkeypatch.setattr(portfolio_service, "_get_snapshot_prices", fake_get_snapshot_prices)
+    monkeypatch.setattr(portfolio_service.portfolio_snapshot_repo, "save_snapshot", fake_save_snapshot)
+
+    result = await portfolio_service.take_snapshot(
+        "2026-04-08",
+        use_historical_close=True,
+    )
+
+    assert result == {
+        "date": "2026-04-08",
+        "combined_value": 2100.0,
+        "accounts_snapshotted": 1,
+    }
+    assert len(saved) == 2
+    assert saved[0]["account_id"] == 1
+    assert saved[1]["account_id"] is None
+    assert saved[1]["day_change"] == 100.0
