@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 
 from kaori.models.post import PostCreate, PostUpdate
 from kaori.services import post_service
+from kaori.services.photo_extraction_service import trigger_photo_extraction, _get_all_photo_paths
 from kaori.storage.file_store import save_photo
 
 router = APIRouter(prefix="/post", tags=["api-post"])
@@ -59,6 +60,13 @@ async def create_post(
         post_date=today, title=title, content=content,
         photo_path=photo_path, photo_paths=photo_paths or None,
     )
+
+    # Auto-extract photo description in background
+    if photo_paths:
+        trigger_photo_extraction("posts", post_id, photo_paths)
+    elif photo_path:
+        trigger_photo_extraction("posts", post_id, [photo_path])
+
     return {"id": post_id, "date": today}
 
 
@@ -76,6 +84,29 @@ async def update_post(post_id: int, body: PostUpdate):
         post_id, title=body.title, content=body.content, is_pinned=body.is_pinned,
     )
     return {"id": post_id}
+
+
+@router.post("/{post_id}/parse-photos")
+async def parse_post_photos(post_id: int):
+    """Trigger photo description extraction for a post."""
+    post = await post_service.get(post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    paths = _get_all_photo_paths(post)
+    if not paths:
+        raise HTTPException(status_code=400, detail="Post has no photos")
+    # Clear existing description so UI can show "processing" state
+    from kaori.database import get_db
+    db = await get_db()
+    try:
+        await db.execute(
+            "UPDATE posts SET photo_description = NULL WHERE id = ?", (post_id,),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+    trigger_photo_extraction("posts", post_id, paths)
+    return {"id": post_id, "status": "processing"}
 
 
 @router.delete("/{post_id}")

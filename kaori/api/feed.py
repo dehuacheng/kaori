@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Query
 
 from kaori.services import feed_service
+from kaori.services.photo_extraction_service import backfill_photos
 from kaori.storage import card_preference_repo
 from kaori.models.card import CardPreferenceUpdate
 
@@ -33,6 +34,13 @@ async def get_feed(
 async def get_card_preferences():
     """Get all card type preferences (enabled, pinned, order)."""
     return await feed_service.get_card_preferences()
+
+
+@router.post("/backfill-photos")
+async def backfill_photo_descriptions():
+    """Extract photo descriptions for all items that have photos but no description."""
+    result = await backfill_photos()
+    return result
 
 
 @router.put("/card-preferences/{card_type}")

@@ -8,7 +8,7 @@ from kaori.llm.prompts import (
     build_weekly_detail_prompt,
 )
 from kaori.services import profile_service, weight_service, workout_service, portfolio_service
-from kaori.storage import meal_repo, summary_repo
+from kaori.storage import meal_repo, summary_repo, post_repo
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,14 @@ async def _build_daily_context(target_date: str | None = None) -> tuple[str, dic
                 parts.append(f"  Top movers: {', '.join(mover_strs)}")
     except Exception:
         pass  # Portfolio data optional for summary
+
+    # Photo descriptions from posts (meals already have descriptions from analysis)
+    posts = await post_repo.list_by_date(day)
+    post_photo_descs = [(p.get("content", ""), p.get("photo_description")) for p in posts if p.get("photo_description")]
+    if post_photo_descs:
+        parts.append("Post photos:")
+        for content, desc in post_photo_descs:
+            parts.append(f"  - [{content[:50]}] {desc}")
 
     # Streak
     parts.append(f"Meal logging streak: {streak} day{'s' if streak != 1 else ''}")

@@ -138,7 +138,7 @@ class TestDefaultTools:
         from kaori.services.agent_tools import get_default_tools
 
         tools = get_default_tools()
-        assert len(tools) == 17
+        assert len(tools) == 19
 
     def test_tool_names(self):
         from kaori.services.agent_tools import get_default_tools

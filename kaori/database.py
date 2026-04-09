@@ -284,6 +284,23 @@ CREATE TABLE IF NOT EXISTS reminders (
     updated_at    TEXT    DEFAULT (datetime('now'))
 );
 
+-- Uploaded documents (PDFs, screenshots) with LLM-extracted text
+-- Multiple files can be grouped as one document (e.g. multi-page screenshots)
+CREATE TABLE IF NOT EXISTS documents (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    filename        TEXT    NOT NULL,
+    original_type   TEXT    NOT NULL CHECK(original_type IN ('pdf','image')),
+    raw_file_path   TEXT,
+    raw_file_paths  TEXT,
+    page_count      INTEGER NOT NULL DEFAULT 1,
+    extracted_text  TEXT,
+    summary         TEXT,
+    status          TEXT    NOT NULL DEFAULT 'processing'
+                            CHECK(status IN ('processing','done','failed')),
+    error_message   TEXT,
+    created_at      TEXT    DEFAULT (datetime('now'))
+);
+
 -- Per-card-type user preferences (enable/disable, pinning)
 CREATE TABLE IF NOT EXISTS card_preferences (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -310,6 +327,8 @@ CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(date);
 CREATE INDEX IF NOT EXISTS idx_workout_exercises_workout ON workout_exercises(workout_id);
 CREATE INDEX IF NOT EXISTS idx_exercise_sets_exercise ON exercise_sets(workout_exercise_id);
 CREATE INDEX IF NOT EXISTS idx_workout_analyses_workout ON workout_analyses(workout_id, is_active);
+
+CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 
 CREATE INDEX IF NOT EXISTS idx_posts_date ON posts(date);
 CREATE INDEX IF NOT EXISTS idx_reminders_due_date ON reminders(due_date);
@@ -650,13 +669,36 @@ async def _migrate_meals_multi_photo(db: aiosqlite.Connection):
 
 
 async def _migrate_posts(db: aiosqlite.Connection):
-    """Add photo_path and photo_paths columns to posts for existing databases."""
+    """Add photo_path, photo_paths, and photo_description columns to posts for existing databases."""
     cursor = await db.execute("PRAGMA table_info(posts)")
     existing = {row[1] for row in await cursor.fetchall()}
     if "photo_path" not in existing:
         await db.execute("ALTER TABLE posts ADD COLUMN photo_path TEXT")
     if "photo_paths" not in existing:
         await db.execute("ALTER TABLE posts ADD COLUMN photo_paths TEXT")
+    if "photo_description" not in existing:
+        await db.execute("ALTER TABLE posts ADD COLUMN photo_description TEXT")
+
+
+async def _migrate_meals_photo_description(db: aiosqlite.Connection):
+    """Add photo_description column to meals for LLM-extracted photo info."""
+    cursor = await db.execute("PRAGMA table_info(meals)")
+    existing = {row[1] for row in await cursor.fetchall()}
+    if "photo_description" not in existing:
+        await db.execute("ALTER TABLE meals ADD COLUMN photo_description TEXT")
+
+
+async def _migrate_documents(db: aiosqlite.Connection):
+    """Add raw_file_paths and page_count columns to documents for multi-file support."""
+    cursor = await db.execute("PRAGMA table_info(documents)")
+    rows = await cursor.fetchall()
+    if not rows:
+        return  # table doesn't exist yet (will be created by SCHEMA)
+    existing = {row[1] for row in rows}
+    if "raw_file_paths" not in existing:
+        await db.execute("ALTER TABLE documents ADD COLUMN raw_file_paths TEXT")
+    if "page_count" not in existing:
+        await db.execute("ALTER TABLE documents ADD COLUMN page_count INTEGER NOT NULL DEFAULT 1")
 
 
 async def init_db():
@@ -672,6 +714,8 @@ async def init_db():
         await _migrate_card_preferences(db)
         await _migrate_meals_multi_photo(db)
         await _migrate_posts(db)
+        await _migrate_meals_photo_description(db)
+        await _migrate_documents(db)
         # Seed default profile if empty
         cursor = await db.execute("SELECT COUNT(*) FROM user_profile")
         row = await cursor.fetchone()

@@ -2,7 +2,7 @@ from kaori.database import get_db
 
 # SQL to join meals with their effective nutrition (override > latest analysis)
 _MEAL_WITH_NUTRITION = """
-SELECT m.id, m.date, m.meal_type, m.photo_path, m.photo_paths, m.notes, m.created_at, m.updated_at,
+SELECT m.id, m.date, m.meal_type, m.photo_path, m.photo_paths, m.photo_description, m.notes, m.created_at, m.updated_at,
     COALESCE(mo.description, a.description, m.description) as description,
     COALESCE(mo.calories, a.calories) as calories,
     COALESCE(mo.protein_g, a.protein_g) as protein_g,

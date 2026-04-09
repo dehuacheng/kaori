@@ -267,6 +267,53 @@ class GetExerciseTypesTool(BaseTool):
 
 
 # ---------------------------------------------------------------------------
+# Document tools
+# ---------------------------------------------------------------------------
+
+class SearchDocumentsTool(BaseTool):
+    name = "search_documents"
+    description = (
+        "Search uploaded documents (PDFs, screenshots) by keyword. "
+        "Returns matching document summaries. Use get_document_detail for full text."
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query. Empty to list all."},
+        },
+    }
+
+    async def execute(self, query: str = "", **kw) -> ToolResult:
+        from kaori.services import document_service
+        if query:
+            results = await document_service.search_documents(query)
+        else:
+            results = await document_service.list_documents()
+        if not results:
+            return ToolResult(output="No documents found.")
+        return ToolResult(output=_format(results))
+
+
+class GetDocumentDetailTool(BaseTool):
+    name = "get_document_detail"
+    description = "Get the full extracted text of a specific document by ID."
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "document_id": {"type": "integer", "description": "The document ID."},
+        },
+        "required": ["document_id"],
+    }
+
+    async def execute(self, document_id: int, **kw) -> ToolResult:
+        from kaori.services import document_service
+        doc = await document_service.get_document(document_id)
+        if not doc:
+            return ToolResult(output=f"Document {document_id} not found", is_error=True)
+        return ToolResult(output=_format(doc))
+
+
+# ---------------------------------------------------------------------------
 # Agent memory tools
 # ---------------------------------------------------------------------------
 
@@ -345,6 +392,8 @@ def get_default_tools(session_id: str | None = None) -> list[BaseTool]:
         GetWeeklySummaryTool(),
         GetMealStreakTool(),
         GetExerciseTypesTool(),
+        SearchDocumentsTool(),
+        GetDocumentDetailTool(),
         SaveMemoryTool(session_id=session_id),
         GetMemoryTool(),
     ]
