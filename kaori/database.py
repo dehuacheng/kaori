@@ -301,6 +301,18 @@ CREATE TABLE IF NOT EXISTS documents (
     created_at      TEXT    DEFAULT (datetime('now'))
 );
 
+-- Heartbeat configuration (single-row, event-driven agent triggers)
+CREATE TABLE IF NOT EXISTS heartbeat_config (
+    id                INTEGER PRIMARY KEY CHECK(id = 1),
+    enabled           INTEGER NOT NULL DEFAULT 0,
+    debounce_minutes  INTEGER NOT NULL DEFAULT 5,
+    prompt_template   TEXT,
+    last_run_at       TEXT,
+    last_session_id   TEXT,
+    last_event_type   TEXT,
+    updated_at        TEXT    DEFAULT (datetime('now'))
+);
+
 -- Per-card-type user preferences (enable/disable, pinning)
 CREATE TABLE IF NOT EXISTS card_preferences (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -688,6 +700,36 @@ async def _migrate_meals_photo_description(db: aiosqlite.Connection):
         await db.execute("ALTER TABLE meals ADD COLUMN photo_description TEXT")
 
 
+async def _migrate_posts_source(db: aiosqlite.Connection):
+    """Add source and is_read columns to posts for agent-created posts."""
+    cursor = await db.execute("PRAGMA table_info(posts)")
+    existing = {row[1] for row in await cursor.fetchall()}
+    if "source" not in existing:
+        await db.execute("ALTER TABLE posts ADD COLUMN source TEXT DEFAULT 'user'")
+    if "is_read" not in existing:
+        await db.execute("ALTER TABLE posts ADD COLUMN is_read INTEGER NOT NULL DEFAULT 1")
+
+
+async def _migrate_agent_sessions_source(db: aiosqlite.Connection):
+    """Add source column to agent_sessions for heartbeat vs user sessions."""
+    cursor = await db.execute("PRAGMA table_info(agent_sessions)")
+    existing = {row[1] for row in await cursor.fetchall()}
+    if "source" not in existing:
+        await db.execute(
+            "ALTER TABLE agent_sessions ADD COLUMN source TEXT DEFAULT 'user'"
+        )
+
+
+async def _seed_heartbeat_config(db: aiosqlite.Connection):
+    """Seed default heartbeat config if not present."""
+    cursor = await db.execute("SELECT COUNT(*) FROM heartbeat_config")
+    count = (await cursor.fetchone())[0]
+    if count == 0:
+        await db.execute(
+            "INSERT INTO heartbeat_config (id, enabled, debounce_minutes) VALUES (1, 0, 5)"
+        )
+
+
 async def _migrate_documents(db: aiosqlite.Connection):
     """Add raw_file_paths and page_count columns to documents for multi-file support."""
     cursor = await db.execute("PRAGMA table_info(documents)")
@@ -716,6 +758,9 @@ async def init_db():
         await _migrate_posts(db)
         await _migrate_meals_photo_description(db)
         await _migrate_documents(db)
+        await _migrate_posts_source(db)
+        await _migrate_agent_sessions_source(db)
+        await _seed_heartbeat_config(db)
         # Seed default profile if empty
         cursor = await db.execute("SELECT COUNT(*) FROM user_profile")
         row = await cursor.fetchone()

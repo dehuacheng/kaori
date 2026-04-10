@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date as date_mod
 from typing import Optional
 
@@ -67,6 +68,27 @@ async def create_post(
     elif photo_path:
         trigger_photo_extraction("posts", post_id, [photo_path])
 
+    # Trigger heartbeat (user-created posts only)
+    asyncio.create_task(_trigger_heartbeat(
+        "post_created", f"User created a post: {content[:100]}",
+    ))
+
+    return {"id": post_id, "date": today}
+
+
+@router.get("/agent-unread")
+async def list_unread_agent_posts(limit: int = 50):
+    """Get agent-created posts that haven't been read yet."""
+    return await post_service.list_unread_agent(limit=limit)
+
+
+@router.post("/text")
+async def create_text_post(body: PostCreate):
+    """Create a text-only post (no photos). Used by agent tools and MCP."""
+    today = body.date or date_mod.today().isoformat()
+    post_id = await post_service.create(
+        post_date=today, title=body.title, content=body.content,
+    )
     return {"id": post_id, "date": today}
 
 
@@ -109,7 +131,22 @@ async def parse_post_photos(post_id: int):
     return {"id": post_id, "status": "processing"}
 
 
+@router.put("/{post_id}/mark-read")
+async def mark_post_read(post_id: int):
+    """Mark a post as read (used for agent-created posts)."""
+    await post_service.mark_read(post_id)
+    return {"id": post_id, "is_read": True}
+
+
 @router.delete("/{post_id}")
 async def delete_post(post_id: int):
     deleted = await post_service.delete(post_id)
     return {"id": post_id, "deleted": deleted}
+
+
+async def _trigger_heartbeat(event_type: str, context: str = ""):
+    try:
+        from kaori.services import heartbeat_service
+        await heartbeat_service.on_event(event_type, context)
+    except Exception:
+        pass

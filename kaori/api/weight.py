@@ -1,3 +1,5 @@
+import asyncio
+
 from pydantic import BaseModel
 from fastapi import APIRouter
 
@@ -37,7 +39,18 @@ async def log_weight(body: WeightCreate):
     entry_id = await weight_service.log(
         weight_date=body.weight_date, weight_kg=body.weight_kg, notes=body.notes,
     )
+    asyncio.create_task(_trigger_heartbeat(
+        "weight_logged", f"Weight logged: {body.weight_kg} kg",
+    ))
     return {"id": entry_id, "date": body.weight_date, "weight_kg": body.weight_kg}
+
+
+async def _trigger_heartbeat(event_type: str, context: str = ""):
+    try:
+        from kaori.services import heartbeat_service
+        await heartbeat_service.on_event(event_type, context)
+    except Exception:
+        pass
 
 
 @router.put("/{entry_id}")

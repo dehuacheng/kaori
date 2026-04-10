@@ -24,12 +24,15 @@ async def get(post_id: int) -> dict | None:
 
 
 async def create(*, date: str, title: str | None = None, content: str,
-                 photo_path: str | None = None, photo_paths: str | None = None) -> int:
+                 photo_path: str | None = None, photo_paths: str | None = None,
+                 source: str = "user") -> int:
+    is_read = 0 if source == "agent" else 1
     db = await get_db()
     try:
         cursor = await db.execute(
-            "INSERT INTO posts (date, title, content, photo_path, photo_paths) VALUES (?, ?, ?, ?, ?)",
-            (date, title, content, photo_path, photo_paths),
+            "INSERT INTO posts (date, title, content, photo_path, photo_paths, source, is_read) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (date, title, content, photo_path, photo_paths, source, is_read),
         )
         await db.commit()
         return cursor.lastrowid
@@ -64,6 +67,31 @@ async def delete(post_id: int) -> bool:
         cursor = await db.execute("DELETE FROM posts WHERE id = ?", (post_id,))
         await db.commit()
         return cursor.rowcount > 0
+    finally:
+        await db.close()
+
+
+async def list_unread_agent(limit: int = 50) -> list[dict]:
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM posts WHERE source = 'agent' AND is_read = 0 "
+            "ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        )
+        return [dict(row) for row in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def mark_read(post_id: int) -> None:
+    db = await get_db()
+    try:
+        await db.execute(
+            "UPDATE posts SET is_read = 1, updated_at = datetime('now') WHERE id = ?",
+            (post_id,),
+        )
+        await db.commit()
     finally:
         await db.close()
 

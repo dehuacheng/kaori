@@ -3,13 +3,16 @@ import uuid
 from kaori.database import get_db
 
 
-async def create(backend: str | None = None, model: str | None = None) -> dict:
+async def create(
+    backend: str | None = None, model: str | None = None,
+    source: str = "user",
+) -> dict:
     session_id = str(uuid.uuid4())
     db = await get_db()
     try:
         await db.execute(
-            "INSERT INTO agent_sessions (id, backend, model) VALUES (?, ?, ?)",
-            (session_id, backend, model),
+            "INSERT INTO agent_sessions (id, backend, model, source) VALUES (?, ?, ?, ?)",
+            (session_id, backend, model, source),
         )
         await db.commit()
         cursor = await db.execute(
@@ -32,20 +35,26 @@ async def get(session_id: str) -> dict | None:
         await db.close()
 
 
-async def list_all(status: str | None = "active", limit: int = 50) -> list[dict]:
+async def list_all(
+    status: str | None = "active", source: str | None = None, limit: int = 50,
+) -> list[dict]:
     db = await get_db()
     try:
+        conditions = []
+        params: list = []
         if status:
-            cursor = await db.execute(
-                "SELECT * FROM agent_sessions WHERE status = ? "
-                "ORDER BY updated_at DESC LIMIT ?",
-                (status, limit),
-            )
-        else:
-            cursor = await db.execute(
-                "SELECT * FROM agent_sessions ORDER BY updated_at DESC LIMIT ?",
-                (limit,),
-            )
+            conditions.append("status = ?")
+            params.append(status)
+        if source:
+            conditions.append("source = ?")
+            params.append(source)
+        where = f"WHERE {' AND '.join(conditions)} " if conditions else ""
+        params.append(limit)
+        cursor = await db.execute(
+            f"SELECT * FROM agent_sessions {where}"
+            "ORDER BY updated_at DESC LIMIT ?",
+            params,
+        )
         return [dict(row) for row in await cursor.fetchall()]
     finally:
         await db.close()

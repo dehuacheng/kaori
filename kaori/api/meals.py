@@ -142,7 +142,19 @@ async def create_meal(
             description=description, notes=notes,
         ))
 
+    # Trigger heartbeat (agent may post an encouraging note)
+    asyncio.create_task(_trigger_heartbeat("meal_logged", f"Meal logged: {description or 'photo meal'}"))
+
     return {"id": meal_id, "date": today, "analysis_status": "pending" if needs_analysis else "done"}
+
+
+async def _trigger_heartbeat(event_type: str, context: str = ""):
+    """Fire heartbeat in background, swallowing errors."""
+    try:
+        from kaori.services import heartbeat_service
+        await heartbeat_service.on_event(event_type, context)
+    except Exception:
+        pass  # heartbeat is best-effort
 
 
 @router.put("/{meal_id}")

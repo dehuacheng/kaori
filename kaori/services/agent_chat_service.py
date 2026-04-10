@@ -121,6 +121,9 @@ async def chat(
     message: str,
     session_id: str | None = None,
     backend: AgentLLMBackend | None = None,
+    system_prompt_override: str | None = None,
+    source: str = "user",
+    post_source: str = "user",
 ) -> AsyncGenerator[dict, None]:
     """Full chat turn — yields SSE event dicts.
 
@@ -131,6 +134,11 @@ async def chat(
     5. Persist assistant response + tool results
     6. Auto-title if first exchange
     7. Yield events throughout
+
+    Args:
+        system_prompt_override: If set, replaces the auto-built system prompt.
+        source: Session source tag ('user' or 'heartbeat').
+        post_source: Source tag for posts created by the agent ('user' or 'agent').
     """
     # --- Resolve backend ---
     if backend is None:
@@ -148,6 +156,7 @@ async def chat(
     if not session:
         session = await agent_service.create_session(
             backend=getattr(backend, "name", "anthropic"),
+            source=source,
         )
 
     sid = session["id"]
@@ -157,10 +166,13 @@ async def chat(
 
     # --- Build context ---
     memory_entries = await agent_service.list_memory()
-    active_prompt = await agent_service.get_active_prompt()
-    system_prompt = _build_system_prompt(
-        memory_entries, active_prompt=active_prompt, is_resumed=is_resumed,
-    )
+    if system_prompt_override:
+        system_prompt = system_prompt_override
+    else:
+        active_prompt = await agent_service.get_active_prompt()
+        system_prompt = _build_system_prompt(
+            memory_entries, active_prompt=active_prompt, is_resumed=is_resumed,
+        )
 
     # --- Load existing messages ---
     db_messages = await agent_service.get_session_messages(sid)
@@ -178,7 +190,7 @@ async def chat(
     next_seq += 1
 
     # --- Tools ---
-    tools = get_default_tools(session_id=sid)
+    tools = get_default_tools(session_id=sid, post_source=post_source)
 
     # --- Run turn loop with streaming ---
     msg_count_before = len(messages)

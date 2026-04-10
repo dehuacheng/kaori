@@ -13,8 +13,9 @@ from kaori.storage import (
 
 async def create_session(
     backend: str | None = None, model: str | None = None,
+    source: str = "user",
 ) -> dict:
-    return await agent_session_repo.create(backend=backend, model=model)
+    return await agent_session_repo.create(backend=backend, model=model, source=source)
 
 
 async def get_session(session_id: str) -> dict | None:

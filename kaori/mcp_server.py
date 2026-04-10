@@ -28,8 +28,8 @@ mcp = FastMCP(
     "kaori",
     instructions=(
         "Kaori is a personal life management system. "
-        "Use these tools to query the user's health, nutrition, fitness, "
-        "finance, and daily planning data. All tools are read-only."
+        "Use these tools to query and interact with the user's health, nutrition, "
+        "fitness, finance, and daily planning data."
     ),
 )
 
@@ -43,6 +43,14 @@ def _get(path: str, params: dict | None = None) -> dict:
     """Make a GET request to the Kaori API."""
     url = f"{API_URL}{path}"
     resp = httpx.get(url, headers=_headers(), params=params, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _post(path: str, json_body: dict) -> dict:
+    """Make a POST request to the Kaori API."""
+    url = f"{API_URL}{path}"
+    resp = httpx.post(url, headers=_headers(), json=json_body, timeout=30)
     resp.raise_for_status()
     return resp.json()
 
@@ -230,6 +238,48 @@ def get_exercise_types(category: str = "") -> str:
     if category:
         params["category"] = category
     return _format(_get("/api/exercise-types", params))
+
+
+@mcp.tool()
+def create_post(content: str, title: str = "", date: str = "") -> str:
+    """Create a text post on the user's feed. Use this to write encouraging
+    notes, observations, or summaries for the user.
+
+    Args:
+        content: The post content text (required).
+        title: Optional short title for the post.
+        date: Post date YYYY-MM-DD. Defaults to today.
+    """
+    body: dict = {"content": content}
+    if title:
+        body["title"] = title
+    if date:
+        body["date"] = date
+    return _format(_post("/api/post/text", body))
+
+
+@mcp.tool()
+def get_sessions(limit: int = 20, status: str = "active") -> str:
+    """List past agent conversation sessions — id, title, date, message count.
+
+    Args:
+        limit: Max sessions to return. Defaults to 20.
+        status: Filter by status: 'active', 'archived', or empty string for all.
+    """
+    params: dict = {"limit": limit}
+    if status:
+        params["status"] = status
+    return _format(_get("/api/agent/sessions", params))
+
+
+@mcp.tool()
+def get_session_messages(session_id: str) -> str:
+    """Read messages from a specific past conversation session.
+
+    Args:
+        session_id: The session ID to read.
+    """
+    return _format(_get(f"/api/agent/sessions/{session_id}"))
 
 
 def main():

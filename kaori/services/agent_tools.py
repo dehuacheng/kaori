@@ -314,6 +314,48 @@ class GetDocumentDetailTool(BaseTool):
 
 
 # ---------------------------------------------------------------------------
+# Write tools
+# ---------------------------------------------------------------------------
+
+class CreatePostTool(BaseTool):
+    name = "create_post"
+    description = (
+        "Create a text post on the user's feed. Use this to write "
+        "encouraging notes, observations, or summaries for the user."
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "The post content text (required).",
+            },
+            "title": {
+                "type": "string",
+                "description": "Optional short title for the post.",
+            },
+            "date": {
+                "type": "string",
+                "description": "Post date YYYY-MM-DD. Defaults to today.",
+            },
+        },
+        "required": ["content"],
+    }
+
+    def __init__(self, source: str = "user"):
+        self._source = source
+
+    async def execute(self, content: str, title: str = "", date: str = "", **kw) -> ToolResult:
+        from kaori.services import post_service
+        post_date = date or None
+        post_id = await post_service.create(
+            content=content, title=title or None, post_date=post_date,
+            source=self._source,
+        )
+        return ToolResult(output=f"Post created (id={post_id})")
+
+
+# ---------------------------------------------------------------------------
 # Agent memory tools
 # ---------------------------------------------------------------------------
 
@@ -371,10 +413,104 @@ class GetMemoryTool(BaseTool):
 
 
 # ---------------------------------------------------------------------------
+# Agent session tools
+# ---------------------------------------------------------------------------
+
+class GetSessionsTool(BaseTool):
+    name = "get_sessions"
+    description = (
+        "List past conversation sessions. Returns session id, title, "
+        "date, and message count. Useful for reviewing what was discussed before."
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "description": "Max sessions to return. Default 20.",
+            },
+            "status": {
+                "type": "string",
+                "description": "Filter by status: 'active', 'archived', or empty for all.",
+            },
+        },
+    }
+
+    async def execute(self, limit: int = 20, status: str = "active", **kw) -> ToolResult:
+        sessions = await agent_service.list_sessions(
+            status=status or None, limit=limit,
+        )
+        summary = []
+        for s in sessions:
+            summary.append({
+                "id": s["id"],
+                "title": s.get("title") or "(untitled)",
+                "message_count": s.get("message_count", 0),
+                "created_at": s.get("created_at"),
+                "updated_at": s.get("updated_at"),
+            })
+        return ToolResult(output=_format(summary))
+
+
+class GetSessionMessagesTool(BaseTool):
+    name = "get_session_messages"
+    description = (
+        "Read messages from a specific past conversation session. "
+        "Returns the message history with readable text."
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "session_id": {
+                "type": "string",
+                "description": "The session ID to read.",
+            },
+        },
+        "required": ["session_id"],
+    }
+
+    async def execute(self, session_id: str, **kw) -> ToolResult:
+        session = await agent_service.get_session(session_id)
+        if not session:
+            return ToolResult(output=f"Session {session_id} not found", is_error=True)
+        messages = await agent_service.get_session_messages(session_id)
+        readable = []
+        for m in messages:
+            entry = {"seq": m["seq"], "role": m["role"], "created_at": m.get("created_at")}
+            try:
+                content = json.loads(m["content"])
+                if isinstance(content, dict):
+                    raw = content.get("content", "")
+                    if isinstance(raw, str):
+                        entry["text"] = raw[:500]
+                    elif isinstance(raw, list):
+                        texts = [
+                            b.get("text", "")
+                            for b in raw
+                            if isinstance(b, dict) and b.get("type") == "text"
+                        ]
+                        entry["text"] = "\n".join(texts)[:500]
+            except (json.JSONDecodeError, KeyError, TypeError):
+                entry["text"] = str(m["content"])[:200]
+            readable.append(entry)
+        return ToolResult(output=_format({
+            "session": {
+                "id": session["id"],
+                "title": session.get("title"),
+                "message_count": session.get("message_count", 0),
+            },
+            "messages": readable,
+        }))
+
+
+# ---------------------------------------------------------------------------
 # Tool registry
 # ---------------------------------------------------------------------------
 
-def get_default_tools(session_id: str | None = None) -> list[BaseTool]:
+def get_default_tools(
+    session_id: str | None = None,
+    post_source: str = "user",
+) -> list[BaseTool]:
     """Return all available agent tools."""
     return [
         GetFeedTool(),
@@ -394,6 +530,9 @@ def get_default_tools(session_id: str | None = None) -> list[BaseTool]:
         GetExerciseTypesTool(),
         SearchDocumentsTool(),
         GetDocumentDetailTool(),
+        CreatePostTool(source=post_source),
+        GetSessionsTool(),
+        GetSessionMessagesTool(),
         SaveMemoryTool(session_id=session_id),
         GetMemoryTool(),
     ]
