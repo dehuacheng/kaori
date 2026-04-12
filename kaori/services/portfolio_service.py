@@ -38,6 +38,11 @@ def _extract_json(text: str) -> dict:
     raise ValueError(f"Could not extract JSON from LLM response (length={len(text)}): {text[:200]}...")
 
 
+def _is_market_day(target_date: str) -> bool:
+    """US markets are closed on weekends. Does not account for holidays."""
+    return date.fromisoformat(target_date).weekday() < 5
+
+
 async def _get_snapshot_prices(
     tickers: list[str],
     target_date: str,
@@ -53,9 +58,9 @@ async def _get_snapshot_prices(
 
     prices = await stock_price_service.get_close_prices_for_date(tickers, target_date)
     missing = [ticker for ticker in tickers if ticker not in prices]
-    if missing:
-        # Fall back to cached/live quotes for symbols where historical daily bars
-        # are unavailable (for example some funds or data-provider gaps).
+    # Only fall back to live quotes on actual trading days. On weekends every
+    # ticker would be "missing" and live fallback produces a bogus snapshot.
+    if missing and _is_market_day(target_date):
         prices.update(await stock_price_service.get_prices(missing))
     return prices
 
@@ -307,18 +312,26 @@ async def get_portfolio_summary(target_date: str) -> dict:
     today = date.today().isoformat()
     is_today = target_date == today
     is_live = is_today and stock_price_service._is_market_hours()
+    is_market_day = _is_market_day(target_date)
+
+    empty = {
+        "date": target_date,
+        "is_live": False,
+        "combined": None,
+        "accounts": [],
+        "top_movers": [],
+        "last_updated": None,
+    }
+
+    # Non-market days (weekends) have no portfolio data — no live feed, no
+    # meaningful close, so no card.
+    if not is_market_day:
+        return empty
 
     # Get all brokerage accounts
     accounts = await financial_account_repo.list_accounts("brokerage")
     if not accounts:
-        return {
-            "date": target_date,
-            "is_live": False,
-            "combined": None,
-            "accounts": [],
-            "top_movers": [],
-            "last_updated": None,
-        }
+        return empty
 
     if is_today and is_live:
         # Market is open — serve live data
@@ -339,14 +352,7 @@ async def get_portfolio_summary(target_date: str) -> dict:
         if snapshot:
             return await _build_snapshot_summary(target_date, accounts, snapshot)
         # No snapshot for this date — return empty (no backfill)
-        return {
-            "date": target_date,
-            "is_live": False,
-            "combined": None,
-            "accounts": [],
-            "top_movers": [],
-            "last_updated": None,
-        }
+        return empty
 
 
 async def _build_live_summary(target_date: str, accounts: list[dict], is_live: bool) -> dict:
