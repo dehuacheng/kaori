@@ -276,3 +276,36 @@ class TestAgentPrompts:
         from kaori.services import agent_service
 
         assert await agent_service.get_active_prompt() is None
+
+
+class TestGetPersonalityText:
+    async def test_from_db(self, test_db):
+        from kaori.services import agent_service
+
+        p = await agent_service.create_prompt("kaori", "You are Kaori.")
+        await agent_service.set_active_prompt(p["id"])
+        text = await agent_service.get_personality_text()
+        assert text == "You are Kaori."
+
+    async def test_no_prompt_no_file(self, test_db):
+        from unittest.mock import patch, MagicMock
+        from kaori.services import agent_service
+
+        mock_path = MagicMock()
+        mock_path.expanduser.return_value = mock_path
+        mock_path.exists.return_value = False
+        with patch("kaori.services.agent_service.Path", return_value=mock_path):
+            text = await agent_service.get_personality_text()
+        assert text is None
+
+    async def test_from_file_fallback(self, test_db):
+        from unittest.mock import patch, MagicMock
+        from kaori.services import agent_service
+
+        mock_path = MagicMock()
+        mock_path.expanduser.return_value = mock_path
+        mock_path.exists.return_value = True
+        mock_path.read_text.return_value = "You are a cheerful bot."
+        with patch("kaori.services.agent_service.Path", return_value=mock_path):
+            text = await agent_service.get_personality_text()
+        assert text == "You are a cheerful bot."

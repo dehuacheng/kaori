@@ -188,3 +188,15 @@
 **User intent:** After market close, the portfolio feed card should show frozen end-of-day values instead of continuing to fetch/display stale or zeroed-out data. The card was showing $0 day change after hours due to a price substitution bug.
 
 **Outcome:** Two fixes: (1) Removed `previous_close` price substitution in `stock_price_service._fetch_from_yfinance()` — always use `last_price` so day-change calculations remain correct after hours. (2) Changed `portfolio_service.get_portfolio_summary()` to auto-create and serve a snapshot on first request after market close, freezing the card at close values for the rest of the day.
+
+### 2026-04-11 — Use Kaori personality for summaries + nightly heartbeat
+
+**User intent:** (1) Daily/weekly summary card generation should use the Kaori assistant's personality prompt (from DB or `~/.kaori-agent/personality.md`) instead of the generic "personal health assistant" persona. (2) Add a scheduled nightly heartbeat at 9pm that generates a personal post about the user's day — distinct from a health summary. The nightly post should read like a diary entry, not a report with sections and bullet points.
+
+**Outcome:** (1) Daily/weekly detail summaries now go through `agent_chat_service.chat()` — the agent uses its personality prompt + tools to query data and write the report. No more manual context building or personality injection into one-shot prompts. The notification-level summary (`get_daily_summary`, 140 chars) stays as a simple one-shot LLM call. Extracted `get_personality_text()` helper in `agent_service.py` for shared personality resolution. (2) Added `schedule_enabled`, `schedule_time`, `nightly_prompt_template`, `last_nightly_date` columns to `heartbeat_config`. Background asyncio loop in `main.py` checks once per minute; when current time >= `schedule_time` and today's nightly hasn't run, triggers `trigger_nightly()`. Nightly prompt produces diary-style posts, not structured reports. API: `POST /api/heartbeat/trigger-nightly` for manual testing.
+
+### 2026-04-11 — Daily/weekly summaries default to Chinese
+
+**User intent:** Daily and weekly detail summary prompts in `summary_service.py` should instruct the agent to respond in Chinese rather than English.
+
+**Outcome:** `generate_daily_detail` and `generate_weekly_detail` now hardcode "Respond in Chinese (中文)." in the agent message and default the `language` param to `"zh"`. Section headers in the prompt use bilingual labels (e.g., `营养 Nutrition`, `体重趋势 Weight Trend`) to keep markdown structure recognizable while signaling Chinese output.

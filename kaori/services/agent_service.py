@@ -1,5 +1,7 @@
 """Agent session/memory/prompt management — thin orchestration over repos."""
 
+from pathlib import Path
+
 from kaori.storage import (
     agent_session_repo,
     agent_message_repo,
@@ -126,3 +128,18 @@ async def set_active_prompt(prompt_id: int) -> dict | None:
 
 async def delete_prompt(prompt_id: int) -> bool:
     return await agent_prompt_repo.delete(prompt_id)
+
+
+async def get_personality_text() -> str | None:
+    """Resolve the active personality text: DB prompt > personality file > None.
+
+    Returns the raw personality text or None if nothing is configured.
+    Used by agent chat, summary generation, and heartbeat.
+    """
+    active = await agent_prompt_repo.get_active()
+    if active:
+        return active["prompt_text"]
+    p = Path("~/.kaori-agent/personality.md").expanduser()
+    if p.exists():
+        return p.read_text().strip()
+    return None

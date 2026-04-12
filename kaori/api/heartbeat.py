@@ -29,6 +29,15 @@ async def trigger():
     return {"triggered": False, "reason": "disabled or already running"}
 
 
+@router.post("/trigger-nightly")
+async def trigger_nightly():
+    """Manually trigger a nightly heartbeat run (for testing). Bypasses schedule check."""
+    session_id = await heartbeat_service.trigger_nightly_manual()
+    if session_id:
+        return {"triggered": True, "session_id": session_id}
+    return {"triggered": False, "reason": "disabled or already running"}
+
+
 @router.get("/history")
 async def history(limit: int = 20):
     """List recent heartbeat sessions."""

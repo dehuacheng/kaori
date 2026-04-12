@@ -301,16 +301,20 @@ CREATE TABLE IF NOT EXISTS documents (
     created_at      TEXT    DEFAULT (datetime('now'))
 );
 
--- Heartbeat configuration (single-row, event-driven agent triggers)
+-- Heartbeat configuration (event-driven + scheduled agent triggers)
 CREATE TABLE IF NOT EXISTS heartbeat_config (
-    id                INTEGER PRIMARY KEY CHECK(id = 1),
-    enabled           INTEGER NOT NULL DEFAULT 0,
-    debounce_minutes  INTEGER NOT NULL DEFAULT 5,
-    prompt_template   TEXT,
-    last_run_at       TEXT,
-    last_session_id   TEXT,
-    last_event_type   TEXT,
-    updated_at        TEXT    DEFAULT (datetime('now'))
+    id                      INTEGER PRIMARY KEY CHECK(id = 1),
+    enabled                 INTEGER NOT NULL DEFAULT 0,
+    debounce_minutes        INTEGER NOT NULL DEFAULT 5,
+    prompt_template         TEXT,
+    schedule_enabled        INTEGER NOT NULL DEFAULT 0,
+    schedule_time           TEXT    NOT NULL DEFAULT '21:00',
+    nightly_prompt_template TEXT,
+    last_run_at             TEXT,
+    last_session_id         TEXT,
+    last_event_type         TEXT,
+    last_nightly_date       TEXT,
+    updated_at              TEXT    DEFAULT (datetime('now'))
 );
 
 -- Per-card-type user preferences (enable/disable, pinning)
@@ -730,6 +734,21 @@ async def _seed_heartbeat_config(db: aiosqlite.Connection):
         )
 
 
+async def _migrate_heartbeat_schedule(db: aiosqlite.Connection):
+    """Add schedule columns to heartbeat_config for nightly scheduled runs."""
+    cursor = await db.execute("PRAGMA table_info(heartbeat_config)")
+    existing = {row[1] for row in await cursor.fetchall()}
+    new_cols = {
+        "schedule_enabled": "INTEGER NOT NULL DEFAULT 0",
+        "schedule_time": "TEXT NOT NULL DEFAULT '21:00'",
+        "nightly_prompt_template": "TEXT",
+        "last_nightly_date": "TEXT",
+    }
+    for col, col_type in new_cols.items():
+        if col not in existing:
+            await db.execute(f"ALTER TABLE heartbeat_config ADD COLUMN {col} {col_type}")
+
+
 async def _migrate_documents(db: aiosqlite.Connection):
     """Add raw_file_paths and page_count columns to documents for multi-file support."""
     cursor = await db.execute("PRAGMA table_info(documents)")
@@ -760,6 +779,7 @@ async def init_db():
         await _migrate_documents(db)
         await _migrate_posts_source(db)
         await _migrate_agent_sessions_source(db)
+        await _migrate_heartbeat_schedule(db)
         await _seed_heartbeat_config(db)
         # Seed default profile if empty
         cursor = await db.execute("SELECT COUNT(*) FROM user_profile")

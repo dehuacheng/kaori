@@ -1,5 +1,7 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -13,13 +15,33 @@ setup_logging()
 logger = logging.getLogger("kaori")
 
 
+async def _nightly_heartbeat_loop():
+    """Background loop that checks once per minute if the nightly heartbeat should fire."""
+    from kaori.services import heartbeat_service
+
+    while True:
+        try:
+            if await heartbeat_service.should_run_nightly():
+                schedule_time = await heartbeat_service.get_schedule_time()
+                now = datetime.now().strftime("%H:%M")
+                if now >= schedule_time:
+                    logger.info("Nightly heartbeat triggered at %s (scheduled: %s)", now, schedule_time)
+                    await heartbeat_service.trigger_nightly()
+        except Exception:
+            logger.exception("Nightly heartbeat scheduler error")
+        await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Kaori starting up (test_mode=%s, db=%s, photos=%s)", TEST_MODE, DB_PATH, PHOTOS_DIR)
     if TEST_MODE:
         logger.warning("*** RUNNING IN TEST MODE — using %s ***", DB_PATH)
     await init_db()
+    # Start nightly heartbeat scheduler
+    task = asyncio.create_task(_nightly_heartbeat_loop())
     yield
+    task.cancel()
 
 
 app = FastAPI(title="Kaori", lifespan=lifespan)

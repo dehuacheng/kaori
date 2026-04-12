@@ -16,7 +16,10 @@ async def get_config() -> dict:
 
 
 async def update_config(**fields) -> dict:
-    allowed = {"enabled", "debounce_minutes", "prompt_template"}
+    allowed = {
+        "enabled", "debounce_minutes", "prompt_template",
+        "schedule_enabled", "schedule_time", "nightly_prompt_template",
+    }
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:
         return await get_config()
@@ -46,6 +49,20 @@ async def record_run(session_id: str, event_type: str) -> None:
             "last_session_id = ?, last_event_type = ?, updated_at = datetime('now') "
             "WHERE id = 1",
             (session_id, event_type),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def record_nightly_run(session_id: str, run_date: str) -> None:
+    db = await get_db()
+    try:
+        await db.execute(
+            "UPDATE heartbeat_config SET last_nightly_date = ?, "
+            "last_session_id = ?, last_event_type = 'nightly', "
+            "updated_at = datetime('now') WHERE id = 1",
+            (run_date, session_id),
         )
         await db.commit()
     finally:

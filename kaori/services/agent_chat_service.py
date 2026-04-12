@@ -8,8 +8,6 @@ import json
 import logging
 from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from pathlib import Path
-
 from kaori.llm.agent_backend import (
     AgentLLMBackend, StreamEvent, get_agent_backend, get_agent_default_model,
 )
@@ -46,24 +44,14 @@ def _estimate_tokens(text: str) -> int:
 
 def _build_system_prompt(
     memory_entries: list[dict],
-    active_prompt: dict | None = None,
+    personality_text: str | None = None,
     is_resumed: bool = False,
 ) -> str:
-    """Build system prompt from active prompt + memory + context."""
+    """Build system prompt from personality + memory + context."""
     parts = []
 
-    # Resolve personality: DB prompt > personality file > default
-    personality = None
-    if active_prompt:
-        personality = active_prompt["prompt_text"]
-    else:
-        # Fall back to CLI personality file (shared config)
-        p = Path("~/.kaori-agent/personality.md").expanduser()
-        if p.exists():
-            personality = p.read_text().strip()
-
-    if personality:
-        parts.append(personality)
+    if personality_text:
+        parts.append(personality_text)
         parts.append("---")
         parts.append(
             "You have access to tools for querying health, nutrition, fitness, "
@@ -169,9 +157,9 @@ async def chat(
     if system_prompt_override:
         system_prompt = system_prompt_override
     else:
-        active_prompt = await agent_service.get_active_prompt()
+        personality = await agent_service.get_personality_text()
         system_prompt = _build_system_prompt(
-            memory_entries, active_prompt=active_prompt, is_resumed=is_resumed,
+            memory_entries, personality_text=personality, is_resumed=is_resumed,
         )
 
     # --- Load existing messages ---
