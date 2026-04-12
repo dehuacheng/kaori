@@ -200,3 +200,9 @@
 **User intent:** Daily and weekly detail summary prompts in `summary_service.py` should instruct the agent to respond in Chinese rather than English.
 
 **Outcome:** `generate_daily_detail` and `generate_weekly_detail` now hardcode "Respond in Chinese (中文)." in the agent message and default the `language` param to `"zh"`. Section headers in the prompt use bilingual labels (e.g., `营养 Nutrition`, `体重趋势 Weight Trend`) to keep markdown structure recognizable while signaling Chinese output.
+
+### 2026-04-11 — Web search for iOS chat via kaori-agent adapter
+
+**User intent:** iOS chat should have web search. Avoid duplicating the tool across the two projects.
+
+**Outcome:** Installed `kaori-agent` (editable) into kaori's venv. `kaori/services/agent_tools.py` imports `WebSearchTool` from `kaori_agent.tools.web_search` and wraps it in a 10-line adapter subclass of kaori's own `BaseTool` — schema/description/execute logic exist in one place (kaori-agent). Added `python-dotenv` dep and `load_dotenv()` at the top of `kaori/main.py` so the server picks up `TAVILY_API_KEY` from `.env`. Symlinked `~/Claude/kaori/.env` → `~/Claude/kaori-agent/.env` so both projects share one secrets file. Tool count in default registry went 22 → 23.

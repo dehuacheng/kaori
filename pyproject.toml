@@ -19,6 +19,7 @@ dependencies = [
     "python-multipart>=0.0.18",
     "aiosqlite>=0.21",
     "yfinance>=0.2",
+    "python-dotenv>=1.0",
 ]
 
 [project.optional-dependencies]

@@ -10,6 +10,23 @@ from datetime import date, timedelta
 from kaori.llm.agent_backend import BaseTool, ToolResult
 from kaori.services import agent_service
 
+# External tool: delegated to kaori-agent's implementation so we maintain one copy.
+from kaori_agent.tools.web_search import WebSearchTool as _KaoriAgentWebSearchTool
+
+
+class WebSearchTool(BaseTool):
+    """Thin adapter over kaori-agent's WebSearchTool so it satisfies kaori's BaseTool.
+
+    The schema, description, and Tavily logic all live in kaori_agent.tools.web_search.
+    """
+    name = _KaoriAgentWebSearchTool.name
+    description = _KaoriAgentWebSearchTool.description
+    input_schema = _KaoriAgentWebSearchTool.input_schema
+
+    async def execute(self, **kwargs) -> ToolResult:
+        r = await _KaoriAgentWebSearchTool().execute(**kwargs)
+        return ToolResult(output=r.output, is_error=r.is_error)
+
 
 def _format(data) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False, default=str)
@@ -535,4 +552,5 @@ def get_default_tools(
         GetSessionMessagesTool(),
         SaveMemoryTool(session_id=session_id),
         GetMemoryTool(),
+        WebSearchTool(),
     ]

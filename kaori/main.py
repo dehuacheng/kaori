@@ -3,6 +3,9 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 
+from dotenv import load_dotenv
+load_dotenv()  # load .env from cwd upward; does not override already-set vars
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
