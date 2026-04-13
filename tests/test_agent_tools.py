@@ -2,7 +2,8 @@
 
 import json
 
-from kaori.services.agent_chat_service import _estimate_tokens, _build_system_prompt
+from kaori.services.agent_chat_service import _estimate_tokens, _BASE_INSTRUCTIONS_BACKEND
+from kaori_agent.prompt_kit import build_system_prompt
 
 
 class TestTokenEstimation:
@@ -22,9 +23,15 @@ class TestTokenEstimation:
 
 
 class TestBuildSystemPrompt:
+    """Now tests the shared kaori_agent.prompt_kit.build_system_prompt that the
+    backend chat service delegates to. See docs/FRONTEND-PARITY.md."""
+
     def test_basic(self):
-        prompt = _build_system_prompt(memory_entries=[], personality_text=None)
-        assert "helpful personal assistant" in prompt
+        prompt = build_system_prompt(
+            persona_text="", memory_entries=[],
+            base_instructions=_BASE_INSTRUCTIONS_BACKEND,
+        )
+        assert "tools for querying health" in prompt
         assert "Current date and time" in prompt
 
     def test_with_memory(self):
@@ -32,25 +39,55 @@ class TestBuildSystemPrompt:
             {"key": "name", "value": "Dehua"},
             {"key": "lang", "value": "bilingual"},
         ]
-        prompt = _build_system_prompt(memory_entries=entries)
+        prompt = build_system_prompt(
+            persona_text="", memory_entries=entries,
+            base_instructions=_BASE_INSTRUCTIONS_BACKEND,
+        )
         assert "name: Dehua" in prompt
         assert "lang: bilingual" in prompt
-        assert "Things I remember" in prompt
+        assert "What I know about you" in prompt
 
     def test_with_personality_text(self):
-        prompt = _build_system_prompt(
+        prompt = build_system_prompt(
+            persona_text="You are Kaori, a caring assistant.",
             memory_entries=[],
-            personality_text="You are Kaori, a caring assistant.",
+            base_instructions=_BASE_INSTRUCTIONS_BACKEND,
         )
         assert "Kaori, a caring assistant" in prompt
-        # Custom personality should replace default, not coexist
-        assert "helpful personal assistant" not in prompt
-        # Tool capabilities note should still be present
+        # Tool capabilities note should still be present after the persona divider
         assert "tools for querying health" in prompt
+        # Persona and base are separated by ---
+        assert "---" in prompt
 
     def test_resumed_session(self):
-        prompt = _build_system_prompt(memory_entries=[], is_resumed=True)
+        prompt = build_system_prompt(
+            persona_text="", memory_entries=[], is_resumed=True,
+            base_instructions=_BASE_INSTRUCTIONS_BACKEND,
+        )
         assert "continuation of a previous conversation" in prompt
+
+    def test_with_session_digests(self):
+        digests = {
+            "recent": [{"title": "trip planning", "summary": "We talked about hiking.", "updated_at": "2026-04-12 10:00:00"}],
+            "older_count": 2,
+            "older_titles": ["book club", "dad call"],
+        }
+        prompt = build_system_prompt(
+            persona_text="", memory_entries=[], session_digests=digests,
+            base_instructions=_BASE_INSTRUCTIONS_BACKEND,
+        )
+        assert "Recent conversations" in prompt
+        assert "trip planning" in prompt
+        assert "book club" in prompt
+
+    def test_with_feed_snapshot(self):
+        snap = "**Today**\n- workouts: morning run (34 min)"
+        prompt = build_system_prompt(
+            persona_text="", memory_entries=[], feed_snapshot=snap,
+            base_instructions=_BASE_INSTRUCTIONS_BACKEND,
+        )
+        assert "What's going on with you lately" in prompt
+        assert "morning run" in prompt
 
 
 class TestAgentMemoryTools:

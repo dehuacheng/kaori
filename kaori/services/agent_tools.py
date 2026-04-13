@@ -396,13 +396,26 @@ class SaveMemoryTool(BaseTool):
         "required": ["key", "value"],
     }
 
-    def __init__(self, session_id: str | None = None):
+    def __init__(self, session_id: str | None = None, on_save=None):
+        """
+        Args:
+            on_save: Optional callback (key, value, category) -> None invoked after
+                a successful save. The chat service uses this to emit a
+                `memory_saved` SSE event so iOS can show a chip / the CLI can
+                show a dim line. Same pattern as kaori_agent's SaveMemoryTool.
+        """
         self._session_id = session_id
+        self._on_save = on_save
 
     async def execute(self, key: str, value: str, category: str = "general", **kw) -> ToolResult:
         entry = await agent_service.upsert_memory(
             key=key, value=value, category=category, source=self._session_id,
         )
+        if self._on_save is not None:
+            try:
+                self._on_save(entry["key"], entry["value"], entry.get("category", "general"))
+            except Exception:
+                pass
         return ToolResult(output=f"Saved: {entry['key']} = {entry['value']}")
 
 
@@ -527,8 +540,15 @@ class GetSessionMessagesTool(BaseTool):
 def get_default_tools(
     session_id: str | None = None,
     post_source: str = "user",
+    on_memory_save=None,
 ) -> list[BaseTool]:
-    """Return all available agent tools."""
+    """Return all available agent tools.
+
+    Args:
+        on_memory_save: Optional callback (key, value, category) -> None passed
+            to SaveMemoryTool so callers can surface memory writes (e.g. as an
+            SSE event). See docs/FRONTEND-PARITY.md for the rationale.
+    """
     return [
         GetFeedTool(),
         GetMealsTool(),
@@ -550,7 +570,7 @@ def get_default_tools(
         CreatePostTool(source=post_source),
         GetSessionsTool(),
         GetSessionMessagesTool(),
-        SaveMemoryTool(session_id=session_id),
+        SaveMemoryTool(session_id=session_id, on_save=on_memory_save),
         GetMemoryTool(),
         WebSearchTool(),
     ]

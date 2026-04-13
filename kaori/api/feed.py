@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Query
 
 from kaori.services import feed_service
+from kaori.services.agent_chat_service import invalidate_feed_cache
 from kaori.services.photo_extraction_service import backfill_photos
 from kaori.storage import card_preference_repo
 from kaori.models.card import CardPreferenceUpdate
@@ -21,12 +22,19 @@ async def get_feed(
         description="End date (YYYY-MM-DD). Defaults to today.",
     ),
 ):
-    """Get unified feed with all card types for a date range."""
+    """Get unified feed with all card types for a date range.
+
+    Side effect: invalidates the agent chat service's per-session feed snapshot
+    cache so the next chat turn refetches. This is the freshness signal — when
+    the user pulls to refresh on iOS, the agent's view of "what's going on
+    lately" is also refreshed. See agent_chat_service.invalidate_feed_cache.
+    """
     today = date.today()
     if not end_date:
         end_date = today.isoformat()
     if not start_date:
         start_date = (today - timedelta(days=1)).isoformat()
+    invalidate_feed_cache()
     return await feed_service.get_feed(start_date, end_date)
 
 

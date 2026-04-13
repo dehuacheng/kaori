@@ -84,6 +84,20 @@ async def update(session_id: str, **fields) -> dict | None:
         await db.close()
 
 
+async def update_summary(session_id: str, summary: str) -> None:
+    """Persist the friend-style narrative summary on the session row."""
+    db = await get_db()
+    try:
+        await db.execute(
+            "UPDATE agent_sessions SET summary = ?, "
+            "summary_updated_at = datetime('now') WHERE id = ?",
+            (summary, session_id),
+        )
+        await db.commit()
+    finally:
+        await db.close()
+
+
 async def delete(session_id: str) -> bool:
     db = await get_db()
     try:

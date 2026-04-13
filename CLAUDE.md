@@ -172,6 +172,13 @@ Full parity with the MCP server tools plus 2 agent-only memory tools.
 existing `LLMBackend` ABC. The agent backend handles chat + tool_use + streaming; the
 existing backend handles one-shot tasks (meal analysis, summaries). They do not interfere.
 
+**Frontend parity (READ before changing prompt/persona/memory/context behavior):**
+The agent has multiple frontends (this backend → iOS, plus the standalone CLI in
+`../kaori-agent`). Anything that affects what the model sees or how it surfaces
+non-chat output (memory saves, mode flips, etc.) must be **shared code**, not a
+parallel implementation. Single source of truth lives in `kaori_agent` (the library).
+Do not write a new `_build_system_prompt` here. See `../kaori-agent/docs/FRONTEND-PARITY.md`.
+
 ## Key Decisions
 - **Codename**: Kaori — personal super app, not just health
 - **Frontend**: Server-rendered HTML (HTMX + Alpine.js) is barebone testing UI only. Primary frontends will be separate repos (iOS, web SPA).

@@ -393,6 +393,8 @@ CREATE TABLE IF NOT EXISTS agent_sessions (
     model       TEXT,
     message_count INTEGER NOT NULL DEFAULT 0,
     token_count_approx INTEGER NOT NULL DEFAULT 0,
+    summary     TEXT,
+    summary_updated_at TEXT,
     created_at  TEXT    DEFAULT (datetime('now')),
     updated_at  TEXT    DEFAULT (datetime('now'))
 );
@@ -724,6 +726,18 @@ async def _migrate_agent_sessions_source(db: aiosqlite.Connection):
         )
 
 
+async def _migrate_agent_sessions_summary(db: aiosqlite.Connection):
+    """Add friend-style narrative summary columns used by the prompt-kit digest block."""
+    cursor = await db.execute("PRAGMA table_info(agent_sessions)")
+    existing = {row[1] for row in await cursor.fetchall()}
+    if "summary" not in existing:
+        await db.execute("ALTER TABLE agent_sessions ADD COLUMN summary TEXT")
+    if "summary_updated_at" not in existing:
+        await db.execute(
+            "ALTER TABLE agent_sessions ADD COLUMN summary_updated_at TEXT"
+        )
+
+
 async def _seed_heartbeat_config(db: aiosqlite.Connection):
     """Seed default heartbeat config if not present."""
     cursor = await db.execute("SELECT COUNT(*) FROM heartbeat_config")
@@ -779,6 +793,7 @@ async def init_db():
         await _migrate_documents(db)
         await _migrate_posts_source(db)
         await _migrate_agent_sessions_source(db)
+        await _migrate_agent_sessions_summary(db)
         await _migrate_heartbeat_schedule(db)
         await _seed_heartbeat_config(db)
         # Seed default profile if empty
