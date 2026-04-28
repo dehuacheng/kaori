@@ -89,6 +89,75 @@ class TestBuildSystemPrompt:
         assert "What's going on with you lately" in prompt
         assert "morning run" in prompt
 
+    def test_with_vault_routing(self):
+        routing = "Vault root: /tmp/vault\n\n### Subtree map\n| topic | subtree |"
+        prompt = build_system_prompt(
+            persona_text="", memory_entries=[], vault_routing=routing,
+            base_instructions=_BASE_INSTRUCTIONS_BACKEND,
+        )
+        assert "Your Obsidian vault" in prompt
+        assert "Subtree map" in prompt
+
+
+class TestVaultToolAdapters:
+    """Smoke test that vault adapters are registered + delegate correctly."""
+
+    def test_no_vault_tools_when_disabled(self):
+        from kaori.services.agent_tools import get_default_tools
+
+        tools = get_default_tools(vault_config=None)
+        names = {t.name for t in tools}
+        # The base set always includes web_search, get_feed, etc.
+        assert "web_search" in names
+        # Vault tools only appear when enabled
+        assert "read_file" not in names
+        assert "glob" not in names
+        assert "grep" not in names
+
+    def test_vault_tools_appear_when_enabled(self, tmp_path):
+        from kaori_agent.config import VaultConfig
+        from kaori.services.agent_tools import get_default_tools
+
+        cfg = VaultConfig(enabled=True, root=tmp_path, exclude_paths=[])
+        tools = get_default_tools(vault_config=cfg)
+        names = {t.name for t in tools}
+        assert "read_file" in names
+        assert "glob" in names
+        assert "grep" in names
+
+    async def test_vault_read_adapter_delegates(self, tmp_path):
+        from kaori.services.agent_tools import VaultReadFileTool
+
+        (tmp_path / "INDEX.md").write_text("# Vault\n")
+        tool = VaultReadFileTool(vault_root=tmp_path)
+        result = await tool.execute(file_path="INDEX.md")
+        assert not result.is_error
+        assert "Vault" in result.output
+
+    async def test_vault_read_adapter_rejects_escape(self, tmp_path):
+        from kaori.services.agent_tools import VaultReadFileTool
+
+        tool = VaultReadFileTool(vault_root=tmp_path)
+        result = await tool.execute(file_path="../escape.txt")
+        assert result.is_error
+        assert "escapes vault root" in result.output.lower()
+
+    async def test_vault_glob_adapter_rejects_escape(self, tmp_path):
+        from kaori.services.agent_tools import VaultGlobTool
+
+        tool = VaultGlobTool(vault_root=tmp_path)
+        result = await tool.execute(pattern="*", path="../")
+        assert result.is_error
+        assert "escapes vault root" in result.output.lower()
+
+    async def test_vault_grep_adapter_rejects_escape(self, tmp_path):
+        from kaori.services.agent_tools import VaultGrepTool
+
+        tool = VaultGrepTool(vault_root=tmp_path)
+        result = await tool.execute(pattern="x", path="../")
+        assert result.is_error
+        assert "escapes vault root" in result.output.lower()
+
 
 class TestAgentMemoryTools:
     async def test_save_memory(self, test_db):

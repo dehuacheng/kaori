@@ -21,6 +21,7 @@ from kaori.services.agent_tools import get_default_tools
 from kaori.storage import agent_session_repo
 
 # Shared prompt/context layer — see docs/FRONTEND-PARITY.md
+from kaori_agent.config import load_vault_config
 from kaori_agent.prompt_kit import (
     build_system_prompt,
     shape_session_digests,
@@ -28,6 +29,7 @@ from kaori_agent.prompt_kit import (
     render_feed_payload,
     resolve_persona,
 )
+from kaori_agent.vault_context import load_vault_routing
 
 logger = logging.getLogger(__name__)
 _PERSONALITY_FILE_FALLBACK = "~/.kaori-agent/personality-friend.md"
@@ -61,6 +63,17 @@ def _estimate_tokens(text: str) -> int:
 _BASE_INSTRUCTIONS_BACKEND = (
     "You have access to tools for querying health, nutrition, fitness, "
     "finance, and personal data, plus tools for cross-session memory."
+)
+
+
+# Vault config + routing preamble: loaded once per process. The vault layout
+# changes infrequently and the YAML is the same one driving the CLI; reload on
+# server restart. Both can be None when the user hasn't configured a vault.
+_vault_config = load_vault_config()
+_vault_routing: str | None = (
+    load_vault_routing(_vault_config.root)
+    if _vault_config.enabled and _vault_config.root and _vault_config.preload_routing
+    else None
 )
 
 
@@ -252,6 +265,7 @@ async def chat(
             session_digests=digests,
             feed_snapshot=feed_snapshot,
             base_instructions=_BASE_INSTRUCTIONS_BACKEND,
+            vault_routing=_vault_routing,
         )
 
     # --- Lazy: summarize the prior inactive session in the background ---
@@ -286,6 +300,7 @@ async def chat(
 
     tools = get_default_tools(
         session_id=sid, post_source=post_source, on_memory_save=_on_memory_save,
+        vault_config=_vault_config,
     )
 
     # --- Run turn loop with streaming ---

@@ -6,12 +6,19 @@ They mirror the MCP server's read-only tools but call services directly.
 
 import json
 from datetime import date, timedelta
+from pathlib import Path
 
 from kaori.llm.agent_backend import BaseTool, ToolResult
 from kaori.services import agent_service
 
-# External tool: delegated to kaori-agent's implementation so we maintain one copy.
+# External tools: delegated to kaori-agent's implementations so we maintain one copy.
+from kaori_agent.config import VaultConfig
 from kaori_agent.tools.web_search import WebSearchTool as _KaoriAgentWebSearchTool
+from kaori_agent.tools.read_file import ReadFileTool as _KaoriAgentReadFileTool
+from kaori_agent.tools.search import (
+    GlobTool as _KaoriAgentGlobTool,
+    GrepTool as _KaoriAgentGrepTool,
+)
 
 
 class WebSearchTool(BaseTool):
@@ -25,6 +32,52 @@ class WebSearchTool(BaseTool):
 
     async def execute(self, **kwargs) -> ToolResult:
         r = await _KaoriAgentWebSearchTool().execute(**kwargs)
+        return ToolResult(output=r.output, is_error=r.is_error)
+
+
+class VaultReadFileTool(BaseTool):
+    """Read a file from the user's Obsidian vault (read-only, scoped to vault root)."""
+    name = _KaoriAgentReadFileTool.name
+    input_schema = _KaoriAgentReadFileTool.input_schema
+
+    def __init__(self, vault_root: Path) -> None:
+        self._inner = _KaoriAgentReadFileTool(vault_root=vault_root)
+        self.description = self._inner.description
+
+    async def execute(self, **kwargs) -> ToolResult:
+        r = await self._inner.execute(**kwargs)
+        return ToolResult(output=r.output, is_error=r.is_error)
+
+
+class VaultGlobTool(BaseTool):
+    """Find files in the user's Obsidian vault by glob pattern (read-only)."""
+    name = _KaoriAgentGlobTool.name
+    input_schema = _KaoriAgentGlobTool.input_schema
+
+    def __init__(self, vault_root: Path, exclude_paths: list[str] | None = None) -> None:
+        self._inner = _KaoriAgentGlobTool(
+            vault_root=vault_root, exclude_paths=exclude_paths or [],
+        )
+        self.description = self._inner.description
+
+    async def execute(self, **kwargs) -> ToolResult:
+        r = await self._inner.execute(**kwargs)
+        return ToolResult(output=r.output, is_error=r.is_error)
+
+
+class VaultGrepTool(BaseTool):
+    """Search file contents in the user's Obsidian vault (read-only)."""
+    name = _KaoriAgentGrepTool.name
+    input_schema = _KaoriAgentGrepTool.input_schema
+
+    def __init__(self, vault_root: Path, exclude_paths: list[str] | None = None) -> None:
+        self._inner = _KaoriAgentGrepTool(
+            vault_root=vault_root, exclude_paths=exclude_paths or [],
+        )
+        self.description = self._inner.description
+
+    async def execute(self, **kwargs) -> ToolResult:
+        r = await self._inner.execute(**kwargs)
         return ToolResult(output=r.output, is_error=r.is_error)
 
 
@@ -541,6 +594,7 @@ def get_default_tools(
     session_id: str | None = None,
     post_source: str = "user",
     on_memory_save=None,
+    vault_config: VaultConfig | None = None,
 ) -> list[BaseTool]:
     """Return all available agent tools.
 
@@ -548,8 +602,10 @@ def get_default_tools(
         on_memory_save: Optional callback (key, value, category) -> None passed
             to SaveMemoryTool so callers can surface memory writes (e.g. as an
             SSE event). See docs/FRONTEND-PARITY.md for the rationale.
+        vault_config: When set and enabled, appends three read-only Obsidian
+            vault tools (read_file, glob, grep) scoped to the vault root.
     """
-    return [
+    tools: list[BaseTool] = [
         GetFeedTool(),
         GetMealsTool(),
         GetMealDetailTool(),
@@ -574,3 +630,16 @@ def get_default_tools(
         GetMemoryTool(),
         WebSearchTool(),
     ]
+    if vault_config and vault_config.enabled and vault_config.root:
+        tools.extend([
+            VaultReadFileTool(vault_root=vault_config.root),
+            VaultGlobTool(
+                vault_root=vault_config.root,
+                exclude_paths=vault_config.exclude_paths,
+            ),
+            VaultGrepTool(
+                vault_root=vault_config.root,
+                exclude_paths=vault_config.exclude_paths,
+            ),
+        ])
+    return tools

@@ -35,6 +35,7 @@ class TurnResult:
     tool_calls: list[ToolCall] = field(default_factory=list)
     stop_reason: str = "end_turn"  # "end_turn" | "tool_use" | "max_tokens"
     raw: Any = None
+    reasoning_content: str = ""  # deepseek-v4-pro / R1 thinking — must be echoed back
 
 
 @dataclass
@@ -310,6 +311,11 @@ class OpenAIAgentBackend(AgentLLMBackend):
         message = choice.message
         text = message.content or ""
 
+        # Reasoning content (DeepSeek thinking-mode) — captured for echo-back
+        reasoning = getattr(message, "reasoning_content", "") or ""
+        if not reasoning and hasattr(message, "model_extra") and message.model_extra:
+            reasoning = message.model_extra.get("reasoning_content", "") or ""
+
         tool_calls: list[ToolCall] = []
         if message.tool_calls:
             for tc in message.tool_calls:
@@ -328,7 +334,10 @@ class OpenAIAgentBackend(AgentLLMBackend):
         else:
             stop_reason = "end_turn"
 
-        return TurnResult(text=text, tool_calls=tool_calls, stop_reason=stop_reason, raw=message)
+        return TurnResult(
+            text=text, tool_calls=tool_calls, stop_reason=stop_reason,
+            raw=message, reasoning_content=reasoning,
+        )
 
     async def chat_stream(
         self, messages: list, tool_schemas: list[dict],
@@ -349,6 +358,7 @@ class OpenAIAgentBackend(AgentLLMBackend):
             raise AgentLLMError(f"{self.name} API error: {e}") from e
 
         text_parts: list[str] = []
+        reasoning_parts: list[str] = []  # accumulated for echo-back on next turn
         tc_accum: dict[int, dict] = {}
         finish_reason = None
 
@@ -363,6 +373,7 @@ class OpenAIAgentBackend(AgentLLMBackend):
             if not reasoning and hasattr(delta, "model_extra") and delta.model_extra:
                 reasoning = delta.model_extra.get("reasoning_content")
             if reasoning:
+                reasoning_parts.append(reasoning)
                 yield StreamEvent(type="thinking", text=reasoning)
 
             if delta.content:
@@ -405,7 +416,10 @@ class OpenAIAgentBackend(AgentLLMBackend):
 
         yield StreamEvent(
             type="turn_complete",
-            result=TurnResult(text=text, tool_calls=tool_calls, stop_reason=stop_reason),
+            result=TurnResult(
+                text=text, tool_calls=tool_calls, stop_reason=stop_reason,
+                reasoning_content="".join(reasoning_parts),
+            ),
         )
 
     def format_tool_schemas(self, tools: list[BaseTool]) -> list[dict]:
@@ -434,6 +448,14 @@ class OpenAIAgentBackend(AgentLLMBackend):
             ]
             if "content" not in msg:
                 msg["content"] = None
+        # DeepSeek thinking mode (deepseek-v4-pro) requires reasoning_content to
+        # be echoed back on every subsequent request — without it the API 400s
+        # with "The reasoning_content in the thinking mode must be passed back".
+        # Other OpenAI-compat providers ignore unknown fields, so this is safe.
+        # NOTE: keep in sync with kaori_agent/llm/openai_backend.py:OpenAIBackend
+        # (parallel implementation for the standalone CLI backend ABC).
+        if result.reasoning_content:
+            msg["reasoning_content"] = result.reasoning_content
         return msg
 
     def make_tool_results(
