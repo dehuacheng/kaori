@@ -1,6 +1,7 @@
 import json
 from datetime import date
 
+from kaori.services.vault_sync_service import trigger_sync_post
 from kaori.storage import post_repo
 
 
@@ -15,11 +16,13 @@ async def create(
 ) -> int:
     target_date = post_date or date.today().isoformat()
     photo_paths_json = json.dumps(photo_paths) if photo_paths else None
-    return await post_repo.create(
+    post_id = await post_repo.create(
         date=target_date, title=title, content=content,
         photo_path=photo_path, photo_paths=photo_paths_json,
         source=source,
     )
+    trigger_sync_post(post_id, "create")
+    return post_id
 
 
 async def get(post_id: int) -> dict | None:
@@ -28,10 +31,14 @@ async def get(post_id: int) -> dict | None:
 
 async def update(post_id: int, **fields) -> None:
     await post_repo.update(post_id, **fields)
+    trigger_sync_post(post_id, "update")
 
 
 async def delete(post_id: int) -> bool:
-    return await post_repo.delete(post_id)
+    deleted = await post_repo.delete(post_id)
+    if deleted:
+        trigger_sync_post(post_id, "delete")
+    return deleted
 
 
 async def list_unread_agent(limit: int = 50) -> list[dict]:

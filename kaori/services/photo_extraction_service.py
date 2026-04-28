@@ -69,6 +69,11 @@ async def extract_photo_description(
             await db.close()
 
         logger.info("Photo description extracted for %s/%d (%d photos)", table, item_id, len(abs_paths))
+
+        if table == "posts":
+            from kaori.services.vault_sync_service import trigger_sync_post
+            trigger_sync_post(item_id, "update")
+
         return description
 
     except (LLMError, Exception):

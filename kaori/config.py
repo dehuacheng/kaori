@@ -31,6 +31,12 @@ API_TOKEN = os.environ.get("KAORI_TOKEN", "dev-token")
 # LLM mode: "claude_cli", "claude_api", or "codex_cli"
 LLM_MODE = os.environ.get("KAORI_LLM_MODE", "claude_cli")
 
+# Vault sync: optional one-way mirror of posts/summaries to an Obsidian vault.
+# Off by default. SQLite remains source of truth; vault gets fire-and-forget copies.
+VAULT_SYNC_ENABLED = os.environ.get("KAORI_VAULT_SYNC_ENABLED", "").lower() in ("1", "true", "yes")
+VAULT_PATH = Path(os.environ.get("KAORI_VAULT_PATH", "~/Claude/my_vault")).expanduser()
+VAULT_SYNC_ROOT = Path(os.environ.get("KAORI_VAULT_SYNC_ROOT", "personal/daily-life/journal/kaori"))
+
 # User defaults (per-kg rates, used when profile not yet configured)
 DEFAULT_PROTEIN_PER_KG = 1.6
 DEFAULT_CARBS_PER_KG = 3.0

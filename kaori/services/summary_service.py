@@ -4,9 +4,16 @@ from datetime import date, timedelta
 from kaori.llm import get_llm_backend, LLMError
 from kaori.llm.prompts import build_daily_summary_prompt
 from kaori.services import profile_service, weight_service, workout_service, portfolio_service
+from kaori.services.vault_sync_service import trigger_sync_summary
 from kaori.storage import meal_repo, summary_repo, post_repo
 
 logger = logging.getLogger(__name__)
+
+
+async def _create_summary_with_sync(**kwargs) -> dict:
+    stored = await summary_repo.create(**kwargs)
+    trigger_sync_summary(int(stored["id"]))
+    return stored
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +216,7 @@ async def generate_daily_detail(language: str = "zh", target_date: str | None = 
 
     summary_text, backend_name, model_name = await _run_agent_summary(message)
 
-    stored = await summary_repo.create(
+    stored = await _create_summary_with_sync(
         summary_type="daily",
         target_date=day,
         summary_text=summary_text,
@@ -239,7 +246,7 @@ async def generate_weekly_detail(language: str = "zh") -> dict:
 
     summary_text, backend_name, model_name = await _run_agent_summary(message)
 
-    stored = await summary_repo.create(
+    stored = await _create_summary_with_sync(
         summary_type="weekly",
         target_date=target_date,
         summary_text=summary_text,

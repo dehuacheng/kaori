@@ -15,6 +15,16 @@ async def get_latest(summary_type: str, target_date: str) -> dict | None:
         await db.close()
 
 
+async def get_by_id(summary_id: int) -> dict | None:
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT * FROM summaries WHERE id = ?", (summary_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
 async def create(*, summary_type: str, target_date: str, summary_text: str,
                  llm_backend: str | None = None, model: str | None = None,
                  raw_response: str | None = None) -> dict:
