@@ -15,7 +15,7 @@ from collections.abc import AsyncGenerator
 from kaori.llm.agent_backend import (
     AgentLLMBackend, StreamEvent, get_agent_backend, get_agent_default_model,
 )
-from kaori.services import agent_service
+from kaori.services import agent_service, vault_sync_service
 from kaori.services.agent_engine import run_turn_stream
 from kaori.services.agent_tools import get_default_tools
 from kaori.storage import agent_session_repo
@@ -36,6 +36,7 @@ _PERSONALITY_FILE_FALLBACK = "~/.kaori-agent/personality-friend.md"
 _CONTEXT_WINDOWS = {
     "deepseek-chat": 64_000,
     "deepseek-reasoner": 64_000,
+    "deepseek-v4-pro": 128_000,
     "moonshot-v1-128k": 128_000,
     "claude-sonnet-4-6": 200_000,
     "claude-opus-4-6": 200_000,
@@ -164,6 +165,7 @@ async def _maybe_summarize_inactive(
         )
         if text:
             await agent_session_repo.update_summary(target["id"], text)
+            vault_sync_service.trigger_sync_session(target["id"], "update")
     except Exception as e:
         logger.warning("lazy summary failed for prior session: %s", e)
 
@@ -370,6 +372,7 @@ async def chat(
         next_seq += 1
 
     # --- Update session metadata ---
+    # update_session triggers a fire-and-forget vault mirror (no-op for heartbeat).
     msg_count = await agent_service.get_latest_seq(sid)
     await agent_service.update_session(sid, message_count=msg_count)
 

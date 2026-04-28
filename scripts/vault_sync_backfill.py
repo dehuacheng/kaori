@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Reconcile the Obsidian vault zone with kaori SQLite.
 
-Idempotent: writes any missing/stale `.md` files for posts/summaries, copies
-photo attachments, and removes orphaned files whose source rows no longer exist.
+Idempotent: writes any missing/stale `.md` files for posts/summaries/chats,
+copies photo attachments, and removes orphaned files whose source rows no
+longer exist.
 
 Reads kaori config (respects KAORI_TEST_MODE, KAORI_VAULT_PATH, etc.).
 
@@ -11,6 +12,7 @@ Usage:
     python -m scripts.vault_sync_backfill --dry-run       # report only
     python -m scripts.vault_sync_backfill --posts-only
     python -m scripts.vault_sync_backfill --summaries-only
+    python -m scripts.vault_sync_backfill --sessions-only
 """
 
 import argparse
@@ -30,10 +32,12 @@ from kaori.services import vault_sync_service  # noqa: E402
 
 
 async def _run(args: argparse.Namespace) -> dict:
+    only = args.posts_only or args.summaries_only or args.sessions_only
     return await vault_sync_service.backfill_all(
         dry_run=args.dry_run,
-        posts=not args.summaries_only,
-        summaries=not args.posts_only,
+        posts=args.posts_only or not only,
+        summaries=args.summaries_only or not only,
+        sessions=args.sessions_only or not only,
     )
 
 
@@ -43,6 +47,7 @@ def main() -> int:
     grp = parser.add_mutually_exclusive_group()
     grp.add_argument("--posts-only", action="store_true")
     grp.add_argument("--summaries-only", action="store_true")
+    grp.add_argument("--sessions-only", action="store_true")
     parser.add_argument(
         "--force",
         action="store_true",

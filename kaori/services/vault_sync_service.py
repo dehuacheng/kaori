@@ -1,4 +1,4 @@
-"""One-way sync: kaori posts/summaries → Obsidian vault as Markdown.
+"""One-way sync: kaori posts/summaries/chats → Obsidian vault as Markdown.
 
 SQLite is the source of truth. Vault gets fire-and-forget mirrors triggered from
 the service layer after DB writes succeed. All errors are logged; sync failure
@@ -12,6 +12,7 @@ Layout under <vault>/<sync_root>/:
     summaries/daily/YYYY-MM-DD.md      (latest daily per date)
     summaries/weekly/YYYY-Www.md       (latest weekly per ISO week)
     attachments/post-<id>/<filename>
+    chats/YYYY-MM-DD-session-<uuid>.md (one file per user-source agent session)
 """
 
 import asyncio
@@ -30,7 +31,16 @@ from kaori.config import (
     VAULT_SYNC_ENABLED,
     VAULT_SYNC_ROOT,
 )
-from kaori.storage import post_repo, summary_repo
+from kaori.storage import (
+    agent_message_repo,
+    agent_session_repo,
+    post_repo,
+    summary_repo,
+)
+
+# Cap each tool result block included in the rendered chat transcript.
+# Long JSON dumps from feed snapshots etc. would otherwise dominate the file.
+_TOOL_RESULT_RENDER_MAX = 4000
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +84,11 @@ def _summary_md_path(row: dict) -> Path:
             name = f"{row['date']}.md"
         return _vault_root() / "summaries" / "weekly" / name
     return _vault_root() / "summaries" / "daily" / f"{row['date']}.md"
+
+
+def _session_md_path(row: dict) -> Path:
+    created = (row.get("created_at") or "")[:10] or "undated"
+    return _vault_root() / "chats" / f"{created}-session-{row['id']}.md"
 
 
 def _photo_rel_paths(row: dict) -> list[str]:
@@ -158,6 +173,147 @@ def _render_summary(row: dict) -> str:
     return fm + body
 
 
+def _extract_text(content) -> str:
+    """Pull plain text out of an Anthropic-style message content (str or block list)."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        out: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                t = block.get("text")
+                if t:
+                    out.append(t)
+        return "\n\n".join(out)
+    return str(content)
+
+
+def _render_message(msg_row: dict) -> str:
+    """Render a single agent_messages row to a markdown block.
+
+    Tolerates malformed JSON and unfamiliar shapes — falls back to a fenced raw dump
+    rather than raising, since vault sync must not break on a single bad row.
+    """
+    role = msg_row.get("role") or "unknown"
+    raw = msg_row.get("content") or ""
+    try:
+        msg = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return f"## {role.title()}\n\n```\n{raw}\n```\n"
+    if not isinstance(msg, dict):
+        return f"## {role.title()}\n\n```\n{raw}\n```\n"
+
+    parts: list[str] = []
+    content = msg.get("content")
+
+    if role == "user":
+        parts.append("## User")
+        text = _extract_text(content).strip()
+        if text:
+            parts.extend(["", text])
+    elif role == "assistant":
+        parts.append("## Assistant")
+        thinking = (msg.get("_thinking") or "").strip()
+        if thinking:
+            parts.append("")
+            parts.append("> _Thinking:_")
+            for line in thinking.splitlines():
+                parts.append(f"> {line}")
+        text = _extract_text(content).strip()
+        if text:
+            parts.extend(["", text])
+        # Anthropic tool_use blocks live inside content list.
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    name = block.get("name", "?")
+                    inp = json.dumps(block.get("input", {}), ensure_ascii=False, indent=2)
+                    parts.extend(["", f"**Tool call:** `{name}`", "```json", inp, "```"])
+        # OpenAI/DeepSeek tool_calls are a sibling field; arguments is a JSON string.
+        for tc in msg.get("tool_calls") or []:
+            if not isinstance(tc, dict):
+                continue
+            fn = tc.get("function") or {}
+            name = fn.get("name", "?")
+            raw_args = fn.get("arguments", "")
+            try:
+                inp = json.dumps(json.loads(raw_args), ensure_ascii=False, indent=2)
+            except (json.JSONDecodeError, TypeError):
+                inp = raw_args
+            parts.extend(["", f"**Tool call:** `{name}`", "```json", inp, "```"])
+    elif role == "tool_result":
+        # Anthropic format: content is a list of {type:"tool_result", tool_use_id, content, _output}
+        if isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                output = block.get("_output")
+                if not output:
+                    output = _extract_text(block.get("content"))
+                output = (output or "").rstrip()
+                if len(output) > _TOOL_RESULT_RENDER_MAX:
+                    output = output[:_TOOL_RESULT_RENDER_MAX] + "\n… [truncated]"
+                parts.extend(["### Tool result", "", "```", output, "```"])
+        else:
+            # OpenAI-shaped: {role: "tool", tool_call_id, content, _output}
+            output = msg.get("_output") or (content if isinstance(content, str) else "")
+            if len(output) > _TOOL_RESULT_RENDER_MAX:
+                output = output[:_TOOL_RESULT_RENDER_MAX] + "\n… [truncated]"
+            parts.extend(["### Tool result", "", "```", output.rstrip(), "```"])
+    elif role == "summary":
+        parts.append("## (compaction summary)")
+        text = _extract_text(content).strip()
+        if text:
+            parts.extend(["", text])
+    else:
+        parts.append(f"## {role.title()}")
+        text = _extract_text(content).strip()
+        if text:
+            parts.extend(["", text])
+
+    parts.append("")
+    return "\n".join(parts)
+
+
+def _render_session(row: dict, messages: list[dict]) -> str:
+    fm = "\n".join([
+        "---",
+        "source: kaori",
+        "kind: chat_session",
+        f"session_id: {_yaml_scalar(row['id'])}",
+        f"title: {_yaml_scalar(row.get('title'))}",
+        f"status: {_yaml_scalar(row.get('status') or 'active')}",
+        f"backend: {_yaml_scalar(row.get('backend'))}",
+        f"model: {_yaml_scalar(row.get('model'))}",
+        f"post_source: {_yaml_scalar(row.get('source') or 'user')}",
+        f"message_count: {int(row.get('message_count') or 0)}",
+        f"token_count_approx: {int(row.get('token_count_approx') or 0)}",
+        f"created_at: {_yaml_scalar(row.get('created_at'))}",
+        f"updated_at: {_yaml_scalar(row.get('updated_at'))}",
+        f"summary_updated_at: {_yaml_scalar(row.get('summary_updated_at'))}",
+        "tags: [kaori, chat]",
+        "---",
+        "",
+    ])
+    parts: list[str] = [fm]
+
+    summary = (row.get("summary") or "").strip()
+    if summary:
+        parts.append("## Summary")
+        parts.append("")
+        parts.append(summary)
+        parts.append("")
+
+    parts.append("## Transcript")
+    parts.append("")
+    for m in messages:
+        parts.append(_render_message(m))
+
+    return "\n".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Filesystem
 # ---------------------------------------------------------------------------
@@ -208,6 +364,11 @@ def _delete_post_files(post_id: int) -> None:
     shutil.rmtree(_post_attach_dir(post_id), ignore_errors=True)
 
 
+def _delete_session_files(session_id: str) -> None:
+    for p in (_vault_root() / "chats").glob(f"*-session-{session_id}.md"):
+        p.unlink(missing_ok=True)
+
+
 # ---------------------------------------------------------------------------
 # Public sync API
 # ---------------------------------------------------------------------------
@@ -227,6 +388,27 @@ async def sync_post(post_id: int, op: Literal["create", "update", "delete"]) -> 
         attachments = _sync_attachments(post_id, _photo_rel_paths(row))
         _atomic_write_text(_post_md_path(row), _render_post(row, attachments))
         logger.info("vault_sync: wrote post %d (%s)", post_id, op)
+
+
+async def sync_session(session_id: str, op: Literal["create", "update", "delete"]) -> None:
+    """Mirror an agent chat session to the vault. Heartbeat sessions are skipped."""
+    if not _sync_active():
+        return
+    async with _sync_lock:
+        if op == "delete":
+            _delete_session_files(session_id)
+            logger.info("vault_sync: deleted session %s", session_id)
+            return
+        row = await agent_session_repo.get(session_id)
+        if not row:
+            logger.warning("vault_sync: session %s not found (op=%s)", session_id, op)
+            return
+        if (row.get("source") or "user") != "user":
+            # Heartbeat / agent-self sessions: not human chats — skip.
+            return
+        messages = await agent_message_repo.list_by_session(session_id)
+        _atomic_write_text(_session_md_path(row), _render_session(row, messages))
+        logger.info("vault_sync: wrote session %s (%s, %d msgs)", session_id, op, len(messages))
 
 
 async def sync_summary(summary_id: int) -> None:
@@ -250,11 +432,18 @@ async def sync_summary(summary_id: int) -> None:
 # Backfill
 # ---------------------------------------------------------------------------
 
-async def backfill_all(*, dry_run: bool = False, posts: bool = True, summaries: bool = True) -> dict:
+async def backfill_all(
+    *,
+    dry_run: bool = False,
+    posts: bool = True,
+    summaries: bool = True,
+    sessions: bool = True,
+) -> dict:
     """Reconcile the vault zone with the DB. Idempotent."""
     report = {
         "posts_written": 0, "posts_orphans_removed": 0,
         "summaries_written": 0, "summaries_orphans_removed": 0,
+        "sessions_written": 0, "sessions_orphans_removed": 0,
         "dry_run": dry_run,
     }
     root = _vault_root()
@@ -303,6 +492,28 @@ async def backfill_all(*, dry_run: bool = False, posts: bool = True, summaries: 
                             f.unlink(missing_ok=True)
                         report["summaries_orphans_removed"] += 1
 
+    if sessions:
+        all_sessions = await agent_session_repo.list_all(
+            status=None, source="user", limit=10_000,
+        )
+        live_ids = {s["id"] for s in all_sessions}
+        for s in all_sessions:
+            if not dry_run:
+                msgs = await agent_message_repo.list_by_session(s["id"])
+                _atomic_write_text(_session_md_path(s), _render_session(s, msgs))
+            report["sessions_written"] += 1
+        chats_dir = root / "chats"
+        if chats_dir.exists():
+            for f in chats_dir.glob("*-session-*.md"):
+                try:
+                    sid = f.stem.rsplit("-session-", 1)[1]
+                except IndexError:
+                    continue
+                if sid not in live_ids:
+                    if not dry_run:
+                        f.unlink(missing_ok=True)
+                    report["sessions_orphans_removed"] += 1
+
     return report
 
 
@@ -331,3 +542,9 @@ def trigger_sync_summary(summary_id: int) -> None:
     if not _sync_active():
         return
     _safe(sync_summary(summary_id))
+
+
+def trigger_sync_session(session_id: str, op: Literal["create", "update", "delete"]) -> None:
+    if not _sync_active():
+        return
+    _safe(sync_session(session_id, op))

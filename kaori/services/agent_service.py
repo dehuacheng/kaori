@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from kaori.services.vault_sync_service import trigger_sync_session
 from kaori.storage import (
     agent_session_repo,
     agent_message_repo,
@@ -31,11 +32,17 @@ async def list_sessions(
 
 
 async def update_session(session_id: str, **fields) -> dict | None:
-    return await agent_session_repo.update(session_id, **fields)
+    updated = await agent_session_repo.update(session_id, **fields)
+    if updated:
+        trigger_sync_session(session_id, "update")
+    return updated
 
 
 async def delete_session(session_id: str) -> bool:
-    return await agent_session_repo.delete(session_id)
+    deleted = await agent_session_repo.delete(session_id)
+    if deleted:
+        trigger_sync_session(session_id, "delete")
+    return deleted
 
 
 # --- Messages ---

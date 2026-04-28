@@ -273,6 +273,23 @@ class OpenAIAgentBackend(AgentLLMBackend):
         self._client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.name = name
 
+    def _maybe_thinking_kwargs(self, model: str) -> dict:
+        """Inject DeepSeek v4 thinking-mode params when applicable.
+
+        deepseek-v4-pro accepts `reasoning_effort` and `extra_body={"thinking": ...}`
+        per the API reference; older models (deepseek-reasoner, deepseek-chat) reject
+        these fields. Gate on backend == 'deepseek' and model name to avoid breaking
+        other OpenAI-compatible providers.
+        """
+        if self.name != "deepseek":
+            return {}
+        if not model or "v4" not in model:
+            return {}
+        return {
+            "reasoning_effort": "max",
+            "extra_body": {"thinking": {"type": "enabled"}},
+        }
+
     async def chat(
         self, messages: list, tool_schemas: list[dict],
         system: str, model: str, max_tokens: int,
@@ -282,6 +299,7 @@ class OpenAIAgentBackend(AgentLLMBackend):
         if tool_schemas:
             kwargs["tools"] = tool_schemas
             kwargs["tool_choice"] = "auto"
+        kwargs.update(self._maybe_thinking_kwargs(model))
 
         try:
             response = await self._client.chat.completions.create(**kwargs)
@@ -323,6 +341,7 @@ class OpenAIAgentBackend(AgentLLMBackend):
         if tool_schemas:
             kwargs["tools"] = tool_schemas
             kwargs["tool_choice"] = "auto"
+        kwargs.update(self._maybe_thinking_kwargs(model))
 
         try:
             stream = await self._client.chat.completions.create(**kwargs)
