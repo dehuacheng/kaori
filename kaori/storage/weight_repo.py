@@ -12,6 +12,18 @@ async def get_history(limit: int = 30) -> list[dict]:
         await db.close()
 
 
+async def get_by_id(entry_id: int) -> dict | None:
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT * FROM body_measurements WHERE id = ?", (entry_id,)
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        await db.close()
+
+
 async def list_by_date(target_date: str) -> list[dict]:
     db = await get_db()
     try:

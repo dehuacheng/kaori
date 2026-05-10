@@ -1,6 +1,7 @@
 from datetime import date
 
 from kaori.services import profile_service
+from kaori.services.vault_sync_service import trigger_sync_body_month
 from kaori.storage import weight_repo
 
 
@@ -30,21 +31,31 @@ async def get_trends(limit: int = 365) -> dict:
 
 async def log(*, weight_date: str | None = None, weight_kg: float, notes: str | None = None) -> int:
     target_date = weight_date or date.today().isoformat()
-    return await weight_repo.create(date=target_date, weight_kg=weight_kg, notes=notes)
+    entry_id = await weight_repo.create(date=target_date, weight_kg=weight_kg, notes=notes)
+    trigger_sync_body_month(target_date)
+    return entry_id
 
 
 async def update(entry_id: int, *, weight_kg: float, notes: str | None = None):
+    entry = await weight_repo.get_by_id(entry_id)
     await weight_repo.update(entry_id, weight_kg=weight_kg, notes=notes)
+    if entry:
+        trigger_sync_body_month(entry["date"])
 
 
 async def delete(entry_id: int) -> bool:
-    return await weight_repo.delete(entry_id)
+    entry = await weight_repo.get_by_id(entry_id)
+    deleted = await weight_repo.delete(entry_id)
+    if deleted and entry:
+        trigger_sync_body_month(entry["date"])
+    return deleted
 
 
 async def bulk_import(entries: list[dict]) -> dict:
     existing = await weight_repo.get_existing_date_weight_pairs()
     imported = 0
     skipped = 0
+    affected_months: set[str] = set()
     for entry in entries:
         key = (entry["date"], round(entry["weight_kg"], 1))
         if key in existing:
@@ -55,6 +66,10 @@ async def bulk_import(entries: list[dict]) -> dict:
             )
             existing.add(key)
             imported += 1
+            affected_months.add(entry["date"][:7])
+    # Fire one sync per affected month so the vault doesn't churn per-row.
+    for month in affected_months:
+        trigger_sync_body_month(f"{month}-01")
     return {"imported": imported, "skipped": skipped}
 
 

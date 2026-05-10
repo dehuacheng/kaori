@@ -102,7 +102,7 @@ async def update_exercise(workout_id: int, exercise_id: int, body: WorkoutExerci
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
-    updated = await workout_service.update_exercise(exercise_id, **updates)
+    updated = await workout_service.update_exercise(exercise_id, workout_id=workout_id, **updates)
     if not updated:
         raise HTTPException(status_code=404, detail="Exercise not found")
     return {"id": exercise_id, "updated": True}
@@ -110,7 +110,7 @@ async def update_exercise(workout_id: int, exercise_id: int, body: WorkoutExerci
 
 @router.delete("/{workout_id}/exercises/{exercise_id}")
 async def delete_exercise(workout_id: int, exercise_id: int):
-    deleted = await workout_service.delete_exercise(exercise_id)
+    deleted = await workout_service.delete_exercise(exercise_id, workout_id=workout_id)
     return {"id": exercise_id, "deleted": deleted}
 
 
@@ -127,6 +127,7 @@ async def add_set(workout_id: int, exercise_id: int, body: SetCreate):
         weight_kg=body.weight_kg,
         duration_seconds=body.duration_seconds,
         notes=body.notes,
+        workout_id=workout_id,
     )
     return {"id": set_id, "workout_exercise_id": exercise_id}
 
@@ -136,7 +137,7 @@ async def update_set(workout_id: int, exercise_id: int, set_id: int, body: SetUp
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
-    updated = await workout_service.update_set(set_id, **updates)
+    updated = await workout_service.update_set(set_id, workout_id=workout_id, **updates)
     if not updated:
         raise HTTPException(status_code=404, detail="Set not found")
     return {"id": set_id, "updated": True}
@@ -144,5 +145,5 @@ async def update_set(workout_id: int, exercise_id: int, set_id: int, body: SetUp
 
 @router.delete("/{workout_id}/exercises/{exercise_id}/sets/{set_id}")
 async def delete_set(workout_id: int, exercise_id: int, set_id: int):
-    deleted = await workout_service.delete_set(set_id)
+    deleted = await workout_service.delete_set(set_id, workout_id=workout_id)
     return {"id": set_id, "deleted": deleted}

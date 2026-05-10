@@ -1,4 +1,4 @@
-"""One-way sync: kaori posts/summaries/chats → Obsidian vault as Markdown.
+"""One-way sync: kaori personal data → Obsidian vault as Markdown + CSV snapshots.
 
 SQLite is the source of truth. Vault gets fire-and-forget mirrors triggered from
 the service layer after DB writes succeed. All errors are logged; sync failure
@@ -13,9 +13,17 @@ Layout under <vault>/<sync_root>/:
     summaries/weekly/YYYY-Www.md       (latest weekly per ISO week)
     attachments/post-<id>/<filename>
     chats/YYYY-MM-DD-session-<uuid>.md (one file per user-source agent session)
+    meals/YYYY-MM-DD.md                (one file per day; rewritten in full on any change)
+    body/YYYY-MM.md                    (rolling per-month table of weights)
+    workouts/YYYY-MM-DD-workout-<id>.md (one file per workout; sets + LLM summary)
+    data/meals.csv                     (flat snapshot for skills)
+    data/body_measurements.csv         (flat snapshot for skills)
+    data/workouts.csv                  (flat snapshot for skills)
 """
 
 import asyncio
+import csv
+import io
 import json
 import logging
 import os
@@ -31,11 +39,16 @@ from kaori.config import (
     VAULT_SYNC_ENABLED,
     VAULT_SYNC_ROOT,
 )
+from kaori.database import get_db
 from kaori.storage import (
     agent_message_repo,
     agent_session_repo,
+    meal_repo,
     post_repo,
     summary_repo,
+    weight_repo,
+    workout_analysis_repo,
+    workout_repo,
 )
 
 # Cap each tool result block included in the rendered chat transcript.
@@ -438,12 +451,18 @@ async def backfill_all(
     posts: bool = True,
     summaries: bool = True,
     sessions: bool = True,
+    meals: bool = True,
+    body: bool = True,
+    workouts: bool = True,
 ) -> dict:
     """Reconcile the vault zone with the DB. Idempotent."""
     report = {
         "posts_written": 0, "posts_orphans_removed": 0,
         "summaries_written": 0, "summaries_orphans_removed": 0,
         "sessions_written": 0, "sessions_orphans_removed": 0,
+        "meals_days_written": 0, "meals_orphans_removed": 0, "meals_csv_rows": 0,
+        "body_months_written": 0, "body_orphans_removed": 0, "body_csv_rows": 0,
+        "workouts_written": 0, "workouts_orphans_removed": 0, "workouts_csv_rows": 0,
         "dry_run": dry_run,
     }
     root = _vault_root()
@@ -514,6 +533,84 @@ async def backfill_all(
                         f.unlink(missing_ok=True)
                     report["sessions_orphans_removed"] += 1
 
+    if meals:
+        # Group every meal by its date, then write one .md per date.
+        all_meals = await _all_meals_with_nutrition()
+        by_date: dict[str, list[dict]] = {}
+        for m in all_meals:
+            by_date.setdefault(m["date"], []).append(m)
+        for d, day_meals in by_date.items():
+            if not dry_run:
+                _atomic_write_text(_meal_day_md_path(d), _render_meal_day(d, day_meals))
+            report["meals_days_written"] += 1
+        meals_dir = root / "meals"
+        if meals_dir.exists():
+            live_dates = set(by_date.keys())
+            for f in meals_dir.glob("*.md"):
+                if f.stem not in live_dates:
+                    if not dry_run:
+                        f.unlink(missing_ok=True)
+                    report["meals_orphans_removed"] += 1
+        if not dry_run:
+            report["meals_csv_rows"] = await _regen_meals_csv()
+
+    if body:
+        all_body = await _all_body_measurements_asc()
+        by_month: dict[str, list[dict]] = {}
+        for r in all_body:
+            by_month.setdefault(r["date"][:7], []).append(r)
+        for month, rows in by_month.items():
+            if not dry_run:
+                # Pass any date in the month; _body_month_md_path slices to YYYY-MM.
+                _atomic_write_text(
+                    _body_month_md_path(rows[0]["date"]),
+                    _render_body_month(month, rows),
+                )
+            report["body_months_written"] += 1
+        body_dir = root / "body"
+        if body_dir.exists():
+            live_months = set(by_month.keys())
+            for f in body_dir.glob("*.md"):
+                if f.stem not in live_months:
+                    if not dry_run:
+                        f.unlink(missing_ok=True)
+                    report["body_orphans_removed"] += 1
+        if not dry_run:
+            report["body_csv_rows"] = await _regen_body_csv()
+
+    if workouts:
+        # list_workouts returns shallow rows; we need the full tree per workout.
+        shallow = await workout_repo.list_workouts(limit=10_000)
+        live_ids: set[int] = set()
+        for s in shallow:
+            wid = int(s["id"])
+            live_ids.add(wid)
+            workout = await workout_repo.get_workout(wid)
+            if not workout:
+                continue
+            analysis = await workout_analysis_repo.get_active(wid)
+            if not dry_run:
+                target = _workout_md_path(workout)
+                # Wipe any stale-date file for this workout id before writing the current one.
+                for p in (root / "workouts").glob(f"*-workout-{wid}.md"):
+                    if p != target:
+                        p.unlink(missing_ok=True)
+                _atomic_write_text(target, _render_workout(workout, analysis))
+            report["workouts_written"] += 1
+        workouts_dir = root / "workouts"
+        if workouts_dir.exists():
+            for f in workouts_dir.glob("*-workout-*.md"):
+                try:
+                    wid = int(f.stem.rsplit("-workout-", 1)[1])
+                except (ValueError, IndexError):
+                    continue
+                if wid not in live_ids:
+                    if not dry_run:
+                        f.unlink(missing_ok=True)
+                    report["workouts_orphans_removed"] += 1
+        if not dry_run:
+            report["workouts_csv_rows"] = await _regen_workouts_csv()
+
     return report
 
 
@@ -548,3 +645,481 @@ def trigger_sync_session(session_id: str, op: Literal["create", "update", "delet
     if not _sync_active():
         return
     _safe(sync_session(session_id, op))
+
+
+# ===========================================================================
+# Personal-data domains: meals / body measurements / workouts
+#
+# Same patterns as posts/summaries/sessions above, but with two output forms:
+#   - per-day or per-entity Markdown for human/LLM browsing
+#   - flat CSV snapshots under data/ for tools that prefer tables
+# CSVs are tiny — regenerated in full on every sync.
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Path helpers (extended)
+# ---------------------------------------------------------------------------
+
+def _meal_day_md_path(date_str: str) -> Path:
+    return _vault_root() / "meals" / f"{date_str}.md"
+
+
+def _body_month_md_path(date_str: str) -> Path:
+    """date_str is YYYY-MM-DD; we use the YYYY-MM prefix as the file name."""
+    return _vault_root() / "body" / f"{date_str[:7]}.md"
+
+
+def _workout_md_path(workout: dict) -> Path:
+    return _vault_root() / "workouts" / f"{workout['date']}-workout-{int(workout['id'])}.md"
+
+
+def _data_csv_path(name: str) -> Path:
+    return _vault_root() / "data" / f"{name}.csv"
+
+
+# ---------------------------------------------------------------------------
+# Rendering helpers (extended)
+# ---------------------------------------------------------------------------
+
+def _fmt_num(v) -> str:
+    """Format a number for markdown tables: '' for None, trim trailing .0."""
+    if v is None:
+        return ""
+    if isinstance(v, float):
+        return str(int(v)) if v.is_integer() else f"{v:g}"
+    return str(v)
+
+
+def _md_cell(s: str | None) -> str:
+    """Sanitize a string for inclusion in a markdown table cell."""
+    if not s:
+        return ""
+    return s.replace("|", "\\|").replace("\n", " ").strip()
+
+
+def _render_meal_day(date_str: str, meals: list[dict]) -> str:
+    """Render one day's meals. Sorted by created_at then id (stable chronological order)."""
+    sorted_meals = sorted(meals, key=lambda m: (m.get("created_at") or "", int(m.get("id", 0))))
+    fm = "\n".join([
+        "---",
+        "source: kaori",
+        "kind: meals_day",
+        f"date: {date_str}",
+        f"meal_count: {len(sorted_meals)}",
+        "tags: [kaori, meals]",
+        "---",
+        "",
+    ])
+    parts: list[str] = [fm, f"# {date_str} — meals", ""]
+
+    total_cal = total_p = total_c = total_f = 0.0
+    have_any_nutrition = False
+    for m in sorted_meals:
+        mtype = m.get("meal_type") or "meal"
+        meal_id = int(m["id"])
+        desc = (m.get("description") or "(no description)").strip()
+        parts.append(f"## {mtype} — meal_id {meal_id}")
+        parts.append("")
+        parts.append(desc)
+        cal = m.get("calories")
+        p = m.get("protein_g")
+        c = m.get("carbs_g")
+        f = m.get("fat_g")
+        if cal is not None or p is not None or c is not None or f is not None:
+            have_any_nutrition = True
+            parts.append("")
+            bullets = []
+            if cal is not None:
+                bullets.append(f"- {_fmt_num(cal)} kcal")
+                total_cal += cal
+            if p is not None:
+                bullets.append(f"- protein: {_fmt_num(p)} g")
+                total_p += p
+            if c is not None:
+                bullets.append(f"- carbs: {_fmt_num(c)} g")
+                total_c += c
+            if f is not None:
+                bullets.append(f"- fat: {_fmt_num(f)} g")
+                total_f += f
+            parts.extend(bullets)
+        notes = (m.get("notes") or "").strip()
+        if notes:
+            parts.append("")
+            parts.append(f"_notes: {notes}_")
+        parts.append("")
+
+    if have_any_nutrition:
+        parts.append("---")
+        parts.append("")
+        parts.append(
+            f"**Day total:** {_fmt_num(total_cal)} kcal · "
+            f"P {_fmt_num(total_p)}g · "
+            f"C {_fmt_num(total_c)}g · "
+            f"F {_fmt_num(total_f)}g"
+        )
+        parts.append("")
+
+    return "\n".join(parts)
+
+
+def _render_body_month(month_str: str, rows: list[dict]) -> str:
+    """rows: body_measurements for the month, ordered by date asc, id asc."""
+    fm = "\n".join([
+        "---",
+        "source: kaori",
+        "kind: body_month",
+        f"month: {month_str}",
+        f"entries: {len(rows)}",
+        "tags: [kaori, body]",
+        "---",
+        "",
+    ])
+    parts: list[str] = [fm, f"# Body — {month_str}", ""]
+    if not rows:
+        parts.append("(no entries)")
+        parts.append("")
+        return "\n".join(parts)
+    parts.append("| date | weight (kg) | notes |")
+    parts.append("|------|-------------|-------|")
+    for r in rows:
+        parts.append(
+            f"| {r['date']} | {_fmt_num(r.get('weight_kg'))} | {_md_cell(r.get('notes'))} |"
+        )
+    parts.append("")
+    return "\n".join(parts)
+
+
+def _render_workout(workout: dict, analysis: dict | None) -> str:
+    fm = "\n".join([
+        "---",
+        "source: kaori",
+        "kind: workout",
+        f"workout_id: {int(workout['id'])}",
+        f"date: {workout['date']}",
+        f"activity_type: {_yaml_scalar(workout.get('activity_type'))}",
+        f"duration_minutes: {_yaml_scalar(workout.get('duration_minutes'))}",
+        f"calories_burned: {_yaml_scalar(workout.get('calories_burned'))}",
+        f"workout_source: {_yaml_scalar(workout.get('source') or 'manual')}",
+        f"created_at: {_yaml_scalar(workout.get('created_at'))}",
+        "tags: [kaori, workout]",
+        "---",
+        "",
+    ])
+    parts: list[str] = [fm, f"# Workout {workout['date']} — id {int(workout['id'])}", ""]
+
+    if analysis:
+        summary = (analysis.get("summary") or "").strip()
+        if summary:
+            parts.append("## Summary")
+            parts.append("")
+            parts.append(summary)
+            parts.append("")
+        trainer = (analysis.get("trainer_notes") or "").strip()
+        if trainer:
+            parts.append("> _Trainer notes:_")
+            for ln in trainer.splitlines():
+                parts.append(f"> {ln}")
+            parts.append("")
+
+    if (workout.get("notes") or "").strip():
+        parts.append("## Notes")
+        parts.append("")
+        parts.append(workout["notes"].strip())
+        parts.append("")
+
+    parts.append("## Exercises")
+    parts.append("")
+    for ex in workout.get("exercises", []):
+        cat = ex.get("exercise_category") or "—"
+        parts.append(f"### {ex.get('exercise_name', 'unknown')} ({cat})")
+        parts.append("")
+        sets = ex.get("sets") or []
+        if sets:
+            parts.append("| set | reps | weight (kg) | duration (s) | notes |")
+            parts.append("|-----|------|-------------|--------------|-------|")
+            for s in sets:
+                parts.append(
+                    f"| {s.get('set_number', '')} | {_fmt_num(s.get('reps'))} | "
+                    f"{_fmt_num(s.get('weight_kg'))} | {_fmt_num(s.get('duration_seconds'))} | "
+                    f"{_md_cell(s.get('notes'))} |"
+                )
+            parts.append("")
+        ex_notes = (ex.get("notes") or "").strip()
+        if ex_notes:
+            parts.append(f"_{ex_notes}_")
+            parts.append("")
+
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# CSV helpers
+# ---------------------------------------------------------------------------
+
+def _write_csv(path: Path, header: list[str], rows: list[list]) -> None:
+    """Atomic CSV write. csv.writer handles quoting/escaping."""
+    buf = io.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    writer.writerow(header)
+    writer.writerows(rows)
+    _atomic_write_text(path, buf.getvalue())
+
+
+def _csv_num(v) -> str:
+    """CSV numeric cell: blank for None, integer if whole, else float repr."""
+    if v is None:
+        return ""
+    if isinstance(v, float):
+        return str(int(v)) if v.is_integer() else repr(v)
+    return str(v)
+
+
+# ---------------------------------------------------------------------------
+# Bulk DB readers (vault-only — kept here to avoid leaking joins into repos
+# that don't need them)
+# ---------------------------------------------------------------------------
+
+async def _all_meals_with_nutrition() -> list[dict]:
+    """Every meal with override>analysis-merged nutrition, oldest first."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT m.id, m.date, m.meal_type, m.notes, "
+            "COALESCE(mo.description, a.description, m.description) AS description, "
+            "COALESCE(mo.calories, a.calories) AS calories, "
+            "COALESCE(mo.protein_g, a.protein_g) AS protein_g, "
+            "COALESCE(mo.carbs_g, a.carbs_g) AS carbs_g, "
+            "COALESCE(mo.fat_g, a.fat_g) AS fat_g "
+            "FROM meals m "
+            "LEFT JOIN meal_overrides mo ON mo.meal_id = m.id "
+            "LEFT JOIN meal_analyses a ON a.meal_id = m.id AND a.is_active = 1 "
+            "ORDER BY m.date ASC, m.id ASC"
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def _all_body_measurements_asc() -> list[dict]:
+    """Every body measurement, oldest first (ascending by date, then id)."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id, date, weight_kg, notes, created_at "
+            "FROM body_measurements "
+            "ORDER BY date ASC, id ASC"
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def _all_workouts_summary() -> list[dict]:
+    """Every workout joined with its active analysis totals, oldest first."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT w.id, w.date, w.activity_type, w.duration_minutes, "
+            "wa.total_volume_kg, wa.total_sets, wa.total_reps "
+            "FROM workouts w "
+            "LEFT JOIN workout_analyses wa ON wa.workout_id = w.id AND wa.is_active = 1 "
+            "ORDER BY w.date ASC, w.id ASC"
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def _meal_dates_with_rows() -> set[str]:
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT DISTINCT date FROM meals")
+        return {r["date"] for r in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
+async def _body_months_with_rows() -> set[str]:
+    db = await get_db()
+    try:
+        cursor = await db.execute("SELECT DISTINCT substr(date, 1, 7) AS m FROM body_measurements")
+        return {r["m"] for r in await cursor.fetchall()}
+    finally:
+        await db.close()
+
+
+# ---------------------------------------------------------------------------
+# CSV regeneration (lock-agnostic — callers should hold _sync_lock when called
+# from a sync_*; backfill_all calls them directly with no concurrent triggers)
+# ---------------------------------------------------------------------------
+
+async def _regen_meals_csv() -> int:
+    rows = await _all_meals_with_nutrition()
+    _write_csv(
+        _data_csv_path("meals"),
+        ["date", "meal_id", "meal_type", "kcal", "protein_g", "carbs_g", "fat_g", "description"],
+        [
+            [
+                r["date"], int(r["id"]), r.get("meal_type") or "",
+                _csv_num(r.get("calories")),
+                _csv_num(r.get("protein_g")),
+                _csv_num(r.get("carbs_g")),
+                _csv_num(r.get("fat_g")),
+                (r.get("description") or "").replace("\n", " ").strip(),
+            ]
+            for r in rows
+        ],
+    )
+    return len(rows)
+
+
+async def _regen_body_csv() -> int:
+    rows = await _all_body_measurements_asc()
+    _write_csv(
+        _data_csv_path("body_measurements"),
+        ["date", "weight_kg", "notes"],
+        [
+            [r["date"], _csv_num(r.get("weight_kg")), (r.get("notes") or "").replace("\n", " ").strip()]
+            for r in rows
+        ],
+    )
+    return len(rows)
+
+
+async def _regen_workouts_csv() -> int:
+    rows = await _all_workouts_summary()
+    _write_csv(
+        _data_csv_path("workouts"),
+        ["date", "workout_id", "activity_type", "duration_min", "total_volume_kg", "total_sets", "total_reps"],
+        [
+            [
+                r["date"], int(r["id"]),
+                r.get("activity_type") or "",
+                _csv_num(r.get("duration_minutes")),
+                _csv_num(r.get("total_volume_kg")),
+                _csv_num(r.get("total_sets")),
+                _csv_num(r.get("total_reps")),
+            ]
+            for r in rows
+        ],
+    )
+    return len(rows)
+
+
+# ---------------------------------------------------------------------------
+# File deletion helpers
+# ---------------------------------------------------------------------------
+
+def _delete_workout_files(workout_id: int) -> None:
+    """Delete any *-workout-<id>.md (handles date renames as well as deletes)."""
+    for p in (_vault_root() / "workouts").glob(f"*-workout-{int(workout_id)}.md"):
+        p.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Public sync API (extended)
+# ---------------------------------------------------------------------------
+
+async def sync_meal_day(date_str: str) -> None:
+    """Rewrite meals/<date>.md from current DB. Removes file when no meals remain."""
+    if not _sync_active():
+        return
+    async with _sync_lock:
+        meals = await meal_repo.list_by_date(date_str)
+        path = _meal_day_md_path(date_str)
+        if not meals:
+            path.unlink(missing_ok=True)
+            logger.info("vault_sync: removed empty meals %s", date_str)
+        else:
+            _atomic_write_text(path, _render_meal_day(date_str, meals))
+            logger.info("vault_sync: wrote meals %s (%d entries)", date_str, len(meals))
+        try:
+            n = await _regen_meals_csv()
+            logger.debug("vault_sync: meals.csv regenerated (%d rows)", n)
+        except Exception:
+            logger.exception("vault_sync: meals.csv regeneration failed")
+
+
+async def sync_body_month(date_str: str) -> None:
+    """Rewrite body/<YYYY-MM>.md from current DB. Removes file when month is empty."""
+    if not _sync_active():
+        return
+    month = date_str[:7]
+    async with _sync_lock:
+        rows = await _body_rows_for_month(month)
+        path = _body_month_md_path(date_str)
+        if not rows:
+            path.unlink(missing_ok=True)
+            logger.info("vault_sync: removed empty body %s", month)
+        else:
+            _atomic_write_text(path, _render_body_month(month, rows))
+            logger.info("vault_sync: wrote body %s (%d entries)", month, len(rows))
+        try:
+            n = await _regen_body_csv()
+            logger.debug("vault_sync: body_measurements.csv regenerated (%d rows)", n)
+        except Exception:
+            logger.exception("vault_sync: body_measurements.csv regeneration failed")
+
+
+async def _body_rows_for_month(month: str) -> list[dict]:
+    """Body measurements for a YYYY-MM, oldest first (stable order)."""
+    db = await get_db()
+    try:
+        cursor = await db.execute(
+            "SELECT id, date, weight_kg, notes, created_at FROM body_measurements "
+            "WHERE date LIKE ? ORDER BY date ASC, id ASC",
+            (f"{month}-%",),
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+    finally:
+        await db.close()
+
+
+async def sync_workout(workout_id: int, op: Literal["create", "update", "delete"]) -> None:
+    """Mirror a workout to the vault. On update we also clear stale-date files."""
+    if not _sync_active():
+        return
+    async with _sync_lock:
+        if op == "delete":
+            _delete_workout_files(workout_id)
+            logger.info("vault_sync: deleted workout %d", workout_id)
+        else:
+            workout = await workout_repo.get_workout(workout_id)
+            if not workout:
+                logger.warning("vault_sync: workout %d not found (op=%s)", workout_id, op)
+            else:
+                analysis = await workout_analysis_repo.get_active(workout_id)
+                # Clear any stale path (date may have changed since last sync) before writing the current one.
+                target = _workout_md_path(workout)
+                for p in (_vault_root() / "workouts").glob(f"*-workout-{int(workout_id)}.md"):
+                    if p != target:
+                        p.unlink(missing_ok=True)
+                _atomic_write_text(target, _render_workout(workout, analysis))
+                logger.info("vault_sync: wrote workout %d (%s)", workout_id, op)
+        try:
+            n = await _regen_workouts_csv()
+            logger.debug("vault_sync: workouts.csv regenerated (%d rows)", n)
+        except Exception:
+            logger.exception("vault_sync: workouts.csv regeneration failed")
+
+
+# ---------------------------------------------------------------------------
+# Triggers (extended)
+# ---------------------------------------------------------------------------
+
+def trigger_sync_meal_day(date_str: str | None) -> None:
+    if not _sync_active() or not date_str:
+        return
+    _safe(sync_meal_day(date_str))
+
+
+def trigger_sync_body_month(date_str: str | None) -> None:
+    if not _sync_active() or not date_str:
+        return
+    _safe(sync_body_month(date_str))
+
+
+def trigger_sync_workout(workout_id: int | None, op: Literal["create", "update", "delete"]) -> None:
+    if not _sync_active() or workout_id is None:
+        return
+    _safe(sync_workout(int(workout_id), op))

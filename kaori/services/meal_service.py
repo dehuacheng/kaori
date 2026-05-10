@@ -11,6 +11,7 @@ from kaori.llm.prompts import (
 )
 from kaori.models.meal import FoodAnalysis
 from kaori.services import profile_service
+from kaori.services.vault_sync_service import trigger_sync_meal_day
 from kaori.storage import meal_repo, meal_analysis_repo, meal_override_repo, meal_history_repo
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,7 @@ async def create(*, meal_date: str | None = None, meal_type: str = "snack",
     needs_analysis = photo_path is not None or description is not None
     if needs_analysis:
         await meal_analysis_repo.create(meal_id)
+    trigger_sync_meal_day(target_date)
     return meal_id, needs_analysis
 
 
@@ -124,15 +126,25 @@ async def update(meal_id: int, **fields) -> str | None:
     meta_fields = {k: fields[k] for k in ("date", "meal_type", "description", "notes")
                    if k in fields and fields[k] is not None}
 
+    # Capture the pre-update date so we can rewrite the old day's vault file
+    # if the meal is being moved to a different date.
+    prev = await meal_repo.get_raw(meal_id)
+    prev_date = prev["date"] if prev else None
+
     if nutrition_fields:
         await meal_override_repo.upsert(meal_id, **nutrition_fields)
 
     meal_date = await meal_repo.update(meal_id, **meta_fields)
+    trigger_sync_meal_day(meal_date)
+    if prev_date and prev_date != meal_date:
+        trigger_sync_meal_day(prev_date)
     return meal_date
 
 
 async def delete(meal_id: int) -> str | None:
-    return await meal_repo.delete(meal_id)
+    meal_date = await meal_repo.delete(meal_id)
+    trigger_sync_meal_day(meal_date)
+    return meal_date
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +235,10 @@ async def run_analysis(meal_id: int, *, photo_path: str | None = None,
             raw_response=response.text,
         )
         logger.info("Meal %d analysis complete: %d kcal", meal_id, result.calories)
+        # Refresh the day's vault file now that nutrition is populated.
+        raw = await meal_repo.get_raw(meal_id)
+        if raw:
+            trigger_sync_meal_day(raw["date"])
 
     except (LLMError, json.JSONDecodeError, Exception) as e:
         logger.exception("Analysis failed for meal %d", meal_id)
@@ -245,6 +261,7 @@ async def reprocess_meal(meal_id: int) -> int:
 
     await meal_override_repo.delete(meal_id)
     analysis_id = await meal_analysis_repo.create(meal_id)
+    trigger_sync_meal_day(raw["date"])
     return analysis_id
 
 
@@ -262,6 +279,9 @@ async def rollback_analysis(meal_id: int, analysis_id: int) -> dict:
 
     await meal_analysis_repo.set_active(analysis_id, meal_id)
     await meal_override_repo.delete(meal_id)
+    raw = await meal_repo.get_raw(meal_id)
+    if raw:
+        trigger_sync_meal_day(raw["date"])
     return await meal_analysis_repo.get_latest_for_meal(meal_id)
 
 

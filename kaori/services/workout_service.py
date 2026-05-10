@@ -7,6 +7,7 @@ from kaori.llm.prompts import build_exercise_identification_prompt, build_workou
 from kaori.storage.file_store import get_resized_image_bytes
 from kaori.models.workout import ExerciseIdentification, WorkoutSummary
 from kaori.services import profile_service
+from kaori.services.vault_sync_service import trigger_sync_workout
 from kaori.storage import exercise_type_repo, workout_repo, timer_preset_repo, workout_analysis_repo
 
 logger = logging.getLogger(__name__)
@@ -189,16 +190,21 @@ async def create_workout(
             source=source,
         )
 
+    trigger_sync_workout(workout_id, "create")
     return await workout_repo.get_workout(workout_id)
 
 
 async def update_workout(workout_id: int, **fields) -> dict | None:
     await workout_repo.update_workout(workout_id, **fields)
+    trigger_sync_workout(workout_id, "update")
     return await workout_repo.get_workout(workout_id)
 
 
 async def delete_workout(workout_id: int) -> bool:
-    return await workout_repo.delete_workout(workout_id)
+    deleted = await workout_repo.delete_workout(workout_id)
+    if deleted:
+        trigger_sync_workout(workout_id, "delete")
+    return deleted
 
 
 # ---------------------------------------------------------------------------
@@ -325,6 +331,7 @@ async def summarize_workout(workout_id: int) -> dict:
         summary=summary.summary,
     )
 
+    trigger_sync_workout(workout_id, "update")
     return {
         "workout_id": workout_id,
         **summary.model_dump(),
@@ -339,18 +346,26 @@ async def add_exercise(
     *, workout_id: int, exercise_type_id: int, order_index: int = 0,
     notes: str | None = None,
 ) -> int:
-    return await workout_repo.add_exercise(
+    new_id = await workout_repo.add_exercise(
         workout_id=workout_id, exercise_type_id=exercise_type_id,
         order_index=order_index, notes=notes,
     )
+    trigger_sync_workout(workout_id, "update")
+    return new_id
 
 
-async def update_exercise(exercise_id: int, **fields) -> bool:
-    return await workout_repo.update_exercise(exercise_id, **fields)
+async def update_exercise(exercise_id: int, *, workout_id: int | None = None, **fields) -> bool:
+    updated = await workout_repo.update_exercise(exercise_id, **fields)
+    if updated:
+        trigger_sync_workout(workout_id, "update")
+    return updated
 
 
-async def delete_exercise(exercise_id: int) -> bool:
-    return await workout_repo.delete_exercise(exercise_id)
+async def delete_exercise(exercise_id: int, *, workout_id: int | None = None) -> bool:
+    deleted = await workout_repo.delete_exercise(exercise_id)
+    if deleted:
+        trigger_sync_workout(workout_id, "update")
+    return deleted
 
 
 # ---------------------------------------------------------------------------
@@ -361,20 +376,29 @@ async def add_set(
     *, workout_exercise_id: int, set_number: int,
     reps: int | None = None, weight_kg: float | None = None,
     duration_seconds: int | None = None, notes: str | None = None,
+    workout_id: int | None = None,
 ) -> int:
-    return await workout_repo.add_set(
+    new_id = await workout_repo.add_set(
         workout_exercise_id=workout_exercise_id, set_number=set_number,
         reps=reps, weight_kg=weight_kg, duration_seconds=duration_seconds,
         notes=notes,
     )
+    trigger_sync_workout(workout_id, "update")
+    return new_id
 
 
-async def update_set(set_id: int, **fields) -> bool:
-    return await workout_repo.update_set(set_id, **fields)
+async def update_set(set_id: int, *, workout_id: int | None = None, **fields) -> bool:
+    updated = await workout_repo.update_set(set_id, **fields)
+    if updated:
+        trigger_sync_workout(workout_id, "update")
+    return updated
 
 
-async def delete_set(set_id: int) -> bool:
-    return await workout_repo.delete_set(set_id)
+async def delete_set(set_id: int, *, workout_id: int | None = None) -> bool:
+    deleted = await workout_repo.delete_set(set_id)
+    if deleted:
+        trigger_sync_workout(workout_id, "update")
+    return deleted
 
 
 # ---------------------------------------------------------------------------
