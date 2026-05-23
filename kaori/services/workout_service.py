@@ -98,8 +98,15 @@ async def create_exercise_from_photo(
 async def run_exercise_identification(type_id: int, photo_path: str, user_hint: str | None = None):
     """Background task: LLM identifies the exercise and updates the record."""
     logger.info("run_exercise_identification: starting for type_id=%d, photo_path=%s", type_id, photo_path)
-    backend = get_llm_backend()
     prompt = build_exercise_identification_prompt(user_hint)
+
+    try:
+        profile = await profile_service.get_profile()
+        backend = get_llm_backend(mode=profile.get("llm_mode"))
+    except (LLMError, Exception) as e:
+        logger.error("Exercise identification setup failed for type %d: %s", type_id, e, exc_info=True)
+        await exercise_type_repo.update(type_id, status="failed")
+        return
 
     try:
         image_bytes = get_resized_image_bytes(photo_path)
@@ -282,6 +289,7 @@ async def summarize_workout(workout_id: int) -> dict:
         raise ValueError("Workout has no exercises to summarize")
 
     # Get user weight for better calorie estimation
+    profile = {}
     user_weight_kg = None
     try:
         profile = await profile_service.get_profile()
@@ -298,7 +306,7 @@ async def summarize_workout(workout_id: int) -> dict:
     workout_text = _format_workout_for_llm(workout)
     prompt = build_workout_summary_prompt(workout_text, user_weight_kg, history_text)
 
-    backend = get_llm_backend()
+    backend = get_llm_backend(mode=profile.get("llm_mode"))
     try:
         response = await backend.complete(prompt)
         summary = _parse_summary_response(response.text)

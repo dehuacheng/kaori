@@ -56,8 +56,20 @@ class CodexCLIBackend(LLMBackend):
     async def complete(self, prompt: str, *, model: str = "sonnet") -> LLMResponse:
         return await self._run(prompt)
 
-    async def analyze_image(self, image_path: str, prompt: str, *, model: str = "sonnet") -> LLMResponse:
-        return await self._run(prompt, image_paths=[image_path])
+    async def analyze_image(
+        self,
+        image_data: bytes | str,
+        prompt: str,
+        *,
+        media_type: str = "image/jpeg",
+        model: str = "sonnet",
+        thinking: bool = True,
+    ) -> LLMResponse:
+        if isinstance(image_data, (bytes, bytearray)):
+            return await self.analyze_images(
+                [(bytes(image_data), media_type)], prompt, model=model, thinking=thinking,
+            )
+        return await self._run(prompt, image_paths=[str(image_data)])
 
     async def analyze_images(self, images: list[tuple[bytes, str]], prompt: str, *, model: str = "sonnet", thinking: bool = True) -> LLMResponse:
         import tempfile, os

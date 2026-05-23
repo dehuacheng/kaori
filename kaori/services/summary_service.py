@@ -1,8 +1,6 @@
 import logging
 from datetime import date, timedelta
 
-from kaori.llm import get_llm_backend, LLMError
-from kaori.llm.prompts import build_daily_summary_prompt
 from kaori.services import profile_service, weight_service, workout_service, portfolio_service
 from kaori.services.vault_sync_service import trigger_sync_summary
 from kaori.storage import meal_repo, summary_repo, post_repo
@@ -14,6 +12,10 @@ async def _create_summary_with_sync(**kwargs) -> dict:
     stored = await summary_repo.create(**kwargs)
     trigger_sync_summary(int(stored["id"]))
     return stored
+
+
+def _language_instruction(language: str) -> str:
+    return "Chinese (中文)" if language.startswith("zh") else "English"
 
 
 # ---------------------------------------------------------------------------
@@ -132,15 +134,21 @@ async def get_daily_summary(language: str = "en") -> dict:
 
     summary_text = None
     try:
-        profile = await profile_service.get_profile()
-        backend = get_llm_backend(mode=profile.get("llm_mode"))
-        prompt = build_daily_summary_prompt(context, language)
-        response = await backend.complete(prompt)
-        summary_text = response.text.strip().strip('"').strip("'")
+        lang = _language_instruction(language)
+        message = (
+            f"Generate a brief, encouraging daily health summary for {today}. "
+            f"Respond in {lang}. Maximum 140 characters. "
+            "Be specific about today's numbers; mention a notable streak if relevant. "
+            "Return only the notification text, no quotes, no JSON, no markdown. "
+            "Do not create a post.\n\n"
+            f"Context:\n{context}"
+        )
+        response_text, _, _ = await _run_agent_summary(message)
+        summary_text = response_text.strip().strip('"').strip("'")
         if len(summary_text) > 200:
             summary_text = summary_text[:197] + "..."
-    except (LLMError, Exception):
-        logger.exception("Daily summary LLM generation failed")
+    except Exception:
+        logger.exception("Daily summary agent generation failed")
 
     return {
         "date": today,
@@ -185,17 +193,24 @@ async def _run_agent_summary(message: str) -> tuple[str, str, str]:
     from kaori.services import agent_chat_service
     from kaori.llm.agent_backend import get_agent_backend, get_agent_default_model
 
+    backend = get_agent_backend()
+    backend_name = getattr(backend, "name", "anthropic")
+    model_name = get_agent_default_model() or "claude-sonnet-4-6"
+
     text_parts: list[str] = []
+    error_message: str | None = None
     async for event in agent_chat_service.chat(
         message=message,
+        backend=backend,
         source="summary",
     ):
         if event.get("type") == "text":
             text_parts.append(event["text"])
+        elif event.get("type") == "error":
+            error_message = event.get("message") or "Agent summary failed"
 
-    backend = get_agent_backend()
-    backend_name = getattr(backend, "name", "anthropic")
-    model_name = get_agent_default_model() or "claude-sonnet-4-6"
+    if error_message:
+        raise RuntimeError(error_message)
 
     return "".join(text_parts).strip(), backend_name, model_name
 
