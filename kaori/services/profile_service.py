@@ -18,9 +18,14 @@ async def get_profile() -> dict:
     else:
         profile["age"] = None
 
-    # Get latest weight for target computation
-    weights = await weight_repo.get_history(1)
-    latest_weight = weights[0]["weight_kg"] if weights else None
+    # Get latest weight for target computation. body_measurements rows can be
+    # waist-only (weight_kg NULL), so walk recent history and pick the most
+    # recent row that actually has a weight value.
+    recent = await weight_repo.get_history(30)
+    latest_weight = next(
+        (r["weight_kg"] for r in recent if r.get("weight_kg") is not None),
+        None,
+    )
     profile["latest_weight_kg"] = latest_weight
 
     # Compute BMR, TDEE, and targets

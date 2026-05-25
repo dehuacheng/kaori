@@ -779,11 +779,12 @@ def _render_body_month(month_str: str, rows: list[dict]) -> str:
         parts.append("(no entries)")
         parts.append("")
         return "\n".join(parts)
-    parts.append("| date | weight (kg) | notes |")
-    parts.append("|------|-------------|-------|")
+    parts.append("| date | weight (kg) | waist@navel (cm) | notes |")
+    parts.append("|------|-------------|------------------|-------|")
     for r in rows:
         parts.append(
-            f"| {r['date']} | {_fmt_num(r.get('weight_kg'))} | {_md_cell(r.get('notes'))} |"
+            f"| {r['date']} | {_fmt_num(r.get('weight_kg'))} | "
+            f"{_fmt_num(r.get('waist_at_navel_cm'))} | {_md_cell(r.get('notes'))} |"
         )
     parts.append("")
     return "\n".join(parts)
@@ -905,7 +906,7 @@ async def _all_body_measurements_asc() -> list[dict]:
     db = await get_db()
     try:
         cursor = await db.execute(
-            "SELECT id, date, weight_kg, notes, created_at "
+            "SELECT id, date, weight_kg, waist_at_navel_cm, notes, created_at "
             "FROM body_measurements "
             "ORDER BY date ASC, id ASC"
         )
@@ -977,9 +978,14 @@ async def _regen_body_csv() -> int:
     rows = await _all_body_measurements_asc()
     _write_csv(
         _data_csv_path("body_measurements"),
-        ["date", "weight_kg", "notes"],
+        ["date", "weight_kg", "waist_at_navel_cm", "notes"],
         [
-            [r["date"], _csv_num(r.get("weight_kg")), (r.get("notes") or "").replace("\n", " ").strip()]
+            [
+                r["date"],
+                _csv_num(r.get("weight_kg")),
+                _csv_num(r.get("waist_at_navel_cm")),
+                (r.get("notes") or "").replace("\n", " ").strip(),
+            ]
             for r in rows
         ],
     )
@@ -1066,7 +1072,8 @@ async def _body_rows_for_month(month: str) -> list[dict]:
     db = await get_db()
     try:
         cursor = await db.execute(
-            "SELECT id, date, weight_kg, notes, created_at FROM body_measurements "
+            "SELECT id, date, weight_kg, waist_at_navel_cm, notes, created_at "
+            "FROM body_measurements "
             "WHERE date LIKE ? ORDER BY date ASC, id ASC",
             (f"{month}-%",),
         )

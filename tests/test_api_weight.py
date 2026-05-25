@@ -32,6 +32,31 @@ class TestWeightAPI:
         assert resp.status_code == 200
         assert resp.json()["weight_kg"] == 79.5
 
+    async def test_update_is_patch_not_replace(self, api_client):
+        """PUT only writes fields present in the body — omitted fields keep their value."""
+        resp = await api_client.post("/api/weight", json={
+            "weight_date": "2025-01-15", "weight_kg": 80.0, "waist_at_navel_cm": 82.5,
+        })
+        entry_id = resp.json()["id"]
+
+        # Update only the waist; weight must survive.
+        resp = await api_client.put(f"/api/weight/{entry_id}", json={"waist_at_navel_cm": 81.0})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["weight_kg"] == 80.0
+        assert body["waist_at_navel_cm"] == 81.0
+
+    async def test_update_notes_only(self, api_client):
+        """Notes-only update is allowed; measurements must survive."""
+        resp = await api_client.post("/api/weight", json={
+            "weight_date": "2025-01-15", "weight_kg": 80.0,
+        })
+        entry_id = resp.json()["id"]
+        resp = await api_client.put(f"/api/weight/{entry_id}", json={"notes": "after fasting"})
+        assert resp.status_code == 200
+        assert resp.json()["weight_kg"] == 80.0
+        assert resp.json()["notes"] == "after fasting"
+
     async def test_delete_weight(self, api_client):
         resp = await api_client.post("/api/weight", json={"weight_date": "2025-01-15", "weight_kg": 80.0})
         entry_id = resp.json()["id"]
@@ -51,6 +76,46 @@ class TestWeightAPI:
         assert resp.status_code == 200
         data = resp.json()
         assert data["latest"] is None
+
+    async def test_create_waist_only(self, api_client):
+        resp = await api_client.post("/api/weight", json={
+            "weight_date": "2025-01-15", "waist_at_navel_cm": 82.5,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["weight_kg"] is None
+        assert data["waist_at_navel_cm"] == 82.5
+
+    async def test_create_both_measurements(self, api_client):
+        resp = await api_client.post("/api/weight", json={
+            "weight_date": "2025-01-15",
+            "weight_kg": 80.0,
+            "waist_at_navel_cm": 82.5,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["weight_kg"] == 80.0
+        assert data["waist_at_navel_cm"] == 82.5
+
+    async def test_create_requires_at_least_one_measurement(self, api_client):
+        resp = await api_client.post("/api/weight", json={
+            "weight_date": "2025-01-15", "notes": "empty",
+        })
+        assert resp.status_code == 422
+
+    async def test_update_waist_on_weight_only_entry(self, api_client):
+        """Adding a waist measurement to an existing weight-only row keeps the weight."""
+        resp = await api_client.post("/api/weight", json={
+            "weight_date": "2025-01-15", "weight_kg": 80.0,
+        })
+        entry_id = resp.json()["id"]
+        resp = await api_client.put(
+            f"/api/weight/{entry_id}",
+            json={"waist_at_navel_cm": 81.0},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["waist_at_navel_cm"] == 81.0
+        assert resp.json()["weight_kg"] == 80.0
 
     async def test_auth_required(self, test_db):
         """Requests without auth token should be rejected."""

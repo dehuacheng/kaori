@@ -1,6 +1,11 @@
 from kaori.database import get_db
 
 
+# Column allowlist for partial updates. Order doesn't matter — the SQL is built
+# dynamically from the fields the caller actually provides.
+_UPDATABLE_COLUMNS = {"weight_kg", "waist_at_navel_cm", "notes"}
+
+
 async def get_history(limit: int = 30) -> list[dict]:
     db = await get_db()
     try:
@@ -36,12 +41,19 @@ async def list_by_date(target_date: str) -> list[dict]:
         await db.close()
 
 
-async def create(*, date: str, weight_kg: float, notes: str | None = None) -> int:
+async def create(
+    *,
+    date: str,
+    weight_kg: float | None = None,
+    waist_at_navel_cm: float | None = None,
+    notes: str | None = None,
+) -> int:
     db = await get_db()
     try:
         cursor = await db.execute(
-            "INSERT INTO body_measurements (date, weight_kg, notes) VALUES (?, ?, ?)",
-            (date, weight_kg, notes),
+            "INSERT INTO body_measurements (date, weight_kg, waist_at_navel_cm, notes) "
+            "VALUES (?, ?, ?, ?)",
+            (date, weight_kg, waist_at_navel_cm, notes),
         )
         await db.commit()
         return cursor.lastrowid
@@ -49,12 +61,22 @@ async def create(*, date: str, weight_kg: float, notes: str | None = None) -> in
         await db.close()
 
 
-async def update(entry_id: int, *, weight_kg: float, notes: str | None = None):
+async def update(entry_id: int, fields: dict):
+    """Patch-style update: only the columns present in `fields` are written.
+
+    Pass `{"weight_kg": 80.0}` to set just the weight without touching waist or
+    notes. Unknown keys are silently ignored. An empty `fields` is a no-op.
+    """
+    cleaned = {k: v for k, v in fields.items() if k in _UPDATABLE_COLUMNS}
+    if not cleaned:
+        return
+    assignments = ", ".join(f"{col} = ?" for col in cleaned)
+    params = list(cleaned.values()) + [entry_id]
     db = await get_db()
     try:
         await db.execute(
-            "UPDATE body_measurements SET weight_kg = ?, notes = ? WHERE id = ?",
-            (weight_kg, notes, entry_id),
+            f"UPDATE body_measurements SET {assignments} WHERE id = ?",
+            params,
         )
         await db.commit()
     finally:
@@ -76,7 +98,9 @@ async def delete(entry_id: int) -> bool:
 async def get_existing_date_weight_pairs() -> set[tuple[str, float]]:
     db = await get_db()
     try:
-        cursor = await db.execute("SELECT date, weight_kg FROM body_measurements")
+        cursor = await db.execute(
+            "SELECT date, weight_kg FROM body_measurements WHERE weight_kg IS NOT NULL"
+        )
         return {(row["date"], round(row["weight_kg"], 1)) for row in await cursor.fetchall()}
     finally:
         await db.close()

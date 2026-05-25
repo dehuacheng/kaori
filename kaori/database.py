@@ -49,13 +49,15 @@ CREATE TABLE IF NOT EXISTS meal_overrides (
     created_at  TEXT    DEFAULT (datetime('now'))
 );
 
--- Weight / body measurements
+-- Body measurements: weight + optional anthropometric measurements (e.g., waist-at-navel)
+-- All measurement columns are nullable; at least one must be set on insert (validated in API layer).
 CREATE TABLE IF NOT EXISTS body_measurements (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    date        TEXT    NOT NULL,
-    weight_kg   REAL,
-    notes       TEXT,
-    created_at  TEXT    DEFAULT (datetime('now'))
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    date                TEXT    NOT NULL,
+    weight_kg           REAL,
+    waist_at_navel_cm   REAL,
+    notes               TEXT,
+    created_at          TEXT    DEFAULT (datetime('now'))
 );
 
 -- User profile / personal info (single-user)
@@ -507,7 +509,8 @@ async def _migrate_meal_analyses(db: aiosqlite.Connection):
 
 
 async def _migrate_body_measurements(db: aiosqlite.Connection):
-    """Drop unique constraint on date if it exists (allow multiple entries per day)."""
+    """Drop unique constraint on date if it exists (allow multiple entries per day),
+    and add anthropometric columns to existing tables."""
     cursor = await db.execute("PRAGMA index_list(body_measurements)")
     for row in await cursor.fetchall():
         idx_name = row[1]
@@ -517,6 +520,13 @@ async def _migrate_body_measurements(db: aiosqlite.Connection):
             cols = [r[2] for r in await ci.fetchall()]
             if cols == ["date"]:
                 await db.execute(f"DROP INDEX IF EXISTS {idx_name}")
+
+    cursor = await db.execute("PRAGMA table_info(body_measurements)")
+    existing = {row[1] for row in await cursor.fetchall()}
+    if "waist_at_navel_cm" not in existing:
+        await db.execute(
+            "ALTER TABLE body_measurements ADD COLUMN waist_at_navel_cm REAL"
+        )
 
 
 async def _migrate_exercise_types(db: aiosqlite.Connection):

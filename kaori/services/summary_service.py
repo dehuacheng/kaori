@@ -164,7 +164,12 @@ async def get_weekly_weight_summary() -> dict:
 
     today = date.today()
     week_ago = (today - timedelta(days=7)).isoformat()
-    this_week = [w for w in weights if w["date"] >= week_ago]
+    # Only weight-bearing entries contribute to a weight summary; waist-only
+    # rows are silently skipped here (they still appear on the feed card).
+    this_week = [
+        w for w in weights
+        if w["date"] >= week_ago and w.get("weight_kg") is not None
+    ]
 
     if not this_week:
         return {"date": today.isoformat(), "summary": None}

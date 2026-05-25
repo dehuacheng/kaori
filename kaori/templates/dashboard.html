@@ -65,48 +65,4 @@
     {% endif %}
     <a href="/meals" class="btn btn-primary btn-block">+ Add Meal</a>
 </div>
-
-<!-- Weight -->
-<div class="card">
-    <div class="card-header">
-        <h2>Weight</h2>
-        <a href="/weight" class="btn btn-sm">History</a>
-    </div>
-    {% if latest_weight %}
-    <div class="weight-display">
-        <span class="weight-value">{{ "%.1f" | format(latest_weight) }} kg</span>
-        <span class="weight-label">({{ "%.1f" | format(latest_weight * 2.20462) }} lbs)</span>
-    </div>
-    {% if weights | length > 1 %}
-    <div class="weight-chart-mini">
-        <canvas id="weightChart" height="60"></canvas>
-    </div>
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const ctx = document.getElementById('weightChart').getContext('2d');
-        const data = {{ weights | tojson }};
-        if (!data.length) return;
-        const vals = data.map(d => d.weight_kg);
-        const min = Math.min(...vals) - 0.5;
-        const max = Math.max(...vals) + 0.5;
-        const w = ctx.canvas.width;
-        const h = ctx.canvas.height;
-        ctx.strokeStyle = '#4cc9f0';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        data.forEach((d, i) => {
-            const x = (i / (data.length - 1)) * w;
-            const y = h - ((d.weight_kg - min) / (max - min)) * h;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-        });
-        ctx.stroke();
-    });
-    </script>
-    {% endif %}
-    {% else %}
-    <p class="empty-state">No weight recorded yet</p>
-    <a href="/weight" class="btn btn-primary btn-block">Log Weight</a>
-    {% endif %}
-</div>
 {% endblock %}

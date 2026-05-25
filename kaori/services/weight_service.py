@@ -10,35 +10,60 @@ async def get_history(limit: int = 30) -> list[dict]:
 
 
 async def get_trends(limit: int = 365) -> dict:
-    weights = await weight_repo.get_history(limit)
-    latest = weights[0]["weight_kg"] if weights else None
-    if len(weights) >= 7:
-        avg_7d = sum(w["weight_kg"] for w in weights[:7]) / 7
+    rows = await weight_repo.get_history(limit)
+
+    # Weight trend stats are derived only from entries that have a weight value;
+    # waist-only entries are still returned in the list so the iOS card can show them.
+    weight_rows = [r for r in rows if r.get("weight_kg") is not None]
+    latest = weight_rows[0]["weight_kg"] if weight_rows else None
+    if len(weight_rows) >= 7:
+        avg_7d = sum(w["weight_kg"] for w in weight_rows[:7]) / 7
     else:
         avg_7d = latest
-    if len(weights) >= 2:
-        delta_week = weights[0]["weight_kg"] - weights[min(6, len(weights) - 1)]["weight_kg"]
+    if len(weight_rows) >= 2:
+        delta_week = (
+            weight_rows[0]["weight_kg"]
+            - weight_rows[min(6, len(weight_rows) - 1)]["weight_kg"]
+        )
     else:
         delta_week = 0
 
     return {
-        "weights_asc": list(reversed(weights)),
+        "weights_asc": list(reversed(rows)),
         "latest": latest,
         "avg_7d": avg_7d,
         "delta_week": delta_week,
     }
 
 
-async def log(*, weight_date: str | None = None, weight_kg: float, notes: str | None = None) -> int:
+async def log(
+    *,
+    weight_date: str | None = None,
+    weight_kg: float | None = None,
+    waist_at_navel_cm: float | None = None,
+    notes: str | None = None,
+) -> int:
     target_date = weight_date or date.today().isoformat()
-    entry_id = await weight_repo.create(date=target_date, weight_kg=weight_kg, notes=notes)
+    entry_id = await weight_repo.create(
+        date=target_date,
+        weight_kg=weight_kg,
+        waist_at_navel_cm=waist_at_navel_cm,
+        notes=notes,
+    )
     trigger_sync_body_month(target_date)
     return entry_id
 
 
-async def update(entry_id: int, *, weight_kg: float, notes: str | None = None):
+async def update(entry_id: int, fields: dict):
+    """Patch-style update: only the keys present in `fields` are written.
+
+    `fields` should be a dict whose keys are a subset of
+    {"weight_kg", "waist_at_navel_cm", "notes"} — typically built from
+    `WeightUpdate.model_dump(exclude_unset=True)` so the request payload
+    determines which columns get touched.
+    """
     entry = await weight_repo.get_by_id(entry_id)
-    await weight_repo.update(entry_id, weight_kg=weight_kg, notes=notes)
+    await weight_repo.update(entry_id, fields)
     if entry:
         trigger_sync_body_month(entry["date"])
 
