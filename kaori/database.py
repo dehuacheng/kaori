@@ -1,6 +1,10 @@
+import logging
+
 import aiosqlite
 
 from kaori.config import DB_PATH
+
+logger = logging.getLogger(__name__)
 
 SCHEMA = """
 -- Raw meal data: exactly what the user provided
@@ -465,6 +469,173 @@ async def get_db() -> aiosqlite.Connection:
     return db
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Offline-first sync metadata (Phase 0)
+#
+# Adds cross-device identity + change-tracking to every syncable user-data table
+# WITHOUT touching any repo/service code. All behavior is enforced at the DB layer
+# via triggers, so the running app is unchanged:
+#   - sync_uuid:  stable cross-device identity (the integer PK stays internal/FK).
+#                 Auto-assigned on INSERT when the caller doesn't supply one.
+#   - updated_at: bumped on every UPDATE (unless the caller already bumped it).
+#   - tombstones: every DELETE writes a row into sync_deletions (hard deletes are
+#                 otherwise invisible to a puller).
+#
+# See CLAUDE.md "Offline-First Sync" and docs/plans/ios-offline-sync-plan.html.
+# Pure caches (stock_prices, weather_cache, portfolio_snapshots) are intentionally
+# excluded — they are laptop-owned and re-derived, never synced as user data.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# RFC-4122 v4 UUID generated entirely in SQLite (per-row when used in UPDATE/trigger).
+SQLITE_UUID4 = (
+    "lower("
+    "hex(randomblob(4)) || '-' || "
+    "hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)), 2) || '-' || "
+    "substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)), 2) || "
+    "'-' || hex(randomblob(6))"
+    ")"
+)
+
+# Every table that participates in iOS sync. Order is irrelevant (each is independent).
+SYNC_TABLES = [
+    # meals domain
+    "meals", "meal_analyses", "meal_overrides", "meal_habit_summaries",
+    # body
+    "body_measurements",
+    # workouts domain
+    "exercise_types", "workouts", "workout_exercises", "exercise_sets",
+    "workout_analyses", "timer_presets",
+    # summaries
+    "summaries",
+    # finance (snapshots/prices excluded — see CACHE_TABLES)
+    "financial_accounts", "portfolio_holdings", "financial_import_analyses",
+    # misc user data
+    "posts", "reminders", "documents", "card_preferences",
+    # singletons
+    "user_profile", "weather_location", "heartbeat_config",
+    # agent domain
+    "agent_sessions", "agent_messages", "agent_memory",
+    "agent_compactions", "agent_prompts",
+]
+
+# Laptop-owned caches: re-derived/re-fetchable, never synced as user data and never
+# written by iOS. A table belongs in exactly one of SYNC_TABLES or CACHE_TABLES — the
+# startup check below warns if a new table is classified in neither.
+CACHE_TABLES = {"stock_prices", "weather_cache", "portfolio_snapshots"}
+
+
+async def _table_columns(db: aiosqlite.Connection, table: str) -> set[str]:
+    cursor = await db.execute(f"PRAGMA table_info({table})")
+    return {row[1] for row in await cursor.fetchall()}
+
+
+async def _migrate_sync_metadata(db: aiosqlite.Connection):
+    """Add sync_uuid + updated_at + delete-tombstone machinery to all syncable tables.
+
+    Idempotent: columns are added only if missing, backfill only touches NULLs, and
+    indexes/triggers use IF NOT EXISTS. Re-running on every startup is a no-op.
+    """
+    # Tombstone log — one row per delete, across all entity types.
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sync_deletions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_type TEXT NOT NULL,
+            sync_uuid   TEXT NOT NULL,
+            deleted_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sync_deletions_at ON sync_deletions(deleted_at)"
+    )
+
+    for table in SYNC_TABLES:
+        cols = await _table_columns(db, table)
+        if not cols:
+            continue  # table not present yet (shouldn't happen — SCHEMA runs first)
+
+        # 1. sync_uuid column + backfill existing rows + uniqueness.
+        if "sync_uuid" not in cols:
+            await db.execute(f"ALTER TABLE {table} ADD COLUMN sync_uuid TEXT")
+            await db.execute(
+                f"UPDATE {table} SET sync_uuid = {SQLITE_UUID4} WHERE sync_uuid IS NULL"
+            )
+        await db.execute(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_uuid_{table} "
+            f"ON {table}(sync_uuid)"
+        )
+
+        # 2. updated_at column + backfill (from created_at when available, else now).
+        if "updated_at" not in cols:
+            await db.execute(f"ALTER TABLE {table} ADD COLUMN updated_at TEXT")
+            if "created_at" in cols:
+                await db.execute(
+                    f"UPDATE {table} SET updated_at = COALESCE(created_at, datetime('now')) "
+                    f"WHERE updated_at IS NULL"
+                )
+            else:
+                await db.execute(
+                    f"UPDATE {table} SET updated_at = datetime('now') WHERE updated_at IS NULL"
+                )
+
+        # 3. Triggers maintain the invariants for ALL writers (repos untouched):
+        #    _ins: assign a uuid + stamp updated_at when the caller supplies no uuid.
+        #    _upd: bump updated_at unless the caller already changed it (recursive
+        #          triggers are off by default, so the inner UPDATE won't re-fire).
+        #    _del: record a tombstone (fires for ON DELETE CASCADE rows too).
+        trigger_bodies = {
+            "ins": f"""
+                AFTER INSERT ON {table} FOR EACH ROW WHEN NEW.sync_uuid IS NULL
+                BEGIN
+                    UPDATE {table}
+                       SET sync_uuid = {SQLITE_UUID4},
+                           updated_at = COALESCE(NEW.updated_at, datetime('now'))
+                     WHERE rowid = NEW.rowid;
+                END
+            """,
+            "upd": f"""
+                AFTER UPDATE ON {table} FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
+                BEGIN
+                    UPDATE {table} SET updated_at = datetime('now') WHERE rowid = NEW.rowid;
+                END
+            """,
+            "del": f"""
+                AFTER DELETE ON {table} FOR EACH ROW
+                BEGIN
+                    INSERT INTO sync_deletions (entity_type, sync_uuid, deleted_at)
+                    VALUES ('{table}', OLD.sync_uuid, datetime('now'));
+                END
+            """,
+        }
+        for suffix, body in trigger_bodies.items():
+            await db.execute(
+                f"CREATE TRIGGER IF NOT EXISTS trg_sync_{table}_{suffix} {body}"
+            )
+
+
+async def _validate_sync_coverage(db: aiosqlite.Connection):
+    """Warn if a real table is classified as neither syncable nor a cache.
+
+    Safety net for the coordination rule in CLAUDE.md "Offline-First Sync": a new
+    table added to SCHEMA must land in SYNC_TABLES or CACHE_TABLES, else iOS silently
+    syncs nothing for it. Logs only (never raises) so a forgotten table can't crash a
+    launchd-respawned process.
+    """
+    cursor = await db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name NOT LIKE 'sqlite_%' AND name != 'sync_deletions'"
+    )
+    all_tables = {row[0] for row in await cursor.fetchall()}
+    unclassified = all_tables - set(SYNC_TABLES) - CACHE_TABLES
+    if unclassified:
+        logger.warning(
+            "Sync coverage gap: %s in neither SYNC_TABLES nor CACHE_TABLES — "
+            "add to one (see CLAUDE.md 'Offline-First Sync').",
+            ", ".join(sorted(unclassified)),
+        )
+
+
 _PROFILE_MIGRATIONS = [
     ("height_cm", "REAL"),
     ("gender", "TEXT"),
@@ -806,6 +977,10 @@ async def init_db():
         await _migrate_agent_sessions_summary(db)
         await _migrate_heartbeat_schedule(db)
         await _seed_heartbeat_config(db)
+        # Offline-first sync metadata — must run AFTER all table/column migrations
+        # so every syncable column exists before sync_uuid/updated_at/triggers attach.
+        await _migrate_sync_metadata(db)
+        await _validate_sync_coverage(db)
         # Seed default profile if empty
         cursor = await db.execute("SELECT COUNT(*) FROM user_profile")
         row = await cursor.fetchone()

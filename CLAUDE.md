@@ -106,6 +106,26 @@ KAORI_TEST_MODE=1 uvicorn kaori.main:app --reload --host 0.0.0.0 --port 8001 &
 - API routes return JSON only. No template rendering.
 - Web routes render templates only. Business logic stays in services.
 - LLM callers depend only on `LLMBackend` ABC, never on concrete backends.
+- **Sync invariants (offline-first iOS):** any change touching syncable user data must preserve the rules in the **Offline-First Sync** section below. The laptop DB is the single source of truth; iOS is a cache.
+
+## Offline-First Sync (iOS local-first cache) — COORDINATION RULES
+
+> **Read before** adding a card type, a user-data table, a write endpoint, or changing delete/LLM-analysis behavior.
+> Full design + rationale: `docs/plans/ios-offline-sync-plan.html`. Status: phased rollout (see that doc §8). Until a phase lands, these are the invariants to design *toward* so later changes don't break it.
+
+**Architecture (Option A):** iOS holds a local SQLite mirror + a durable write "outbox". The **laptop backend stays the single source of truth** — all business logic, LLM, and vault sync live here, unchanged. iOS proposes writes; the server disposes. iOS never computes authoritative or LLM-derived values.
+
+**Invariants — do NOT violate without updating the sync layer + this doc:**
+1. **Every syncable user-data table needs three things:** a `sync_uuid TEXT UNIQUE` (stable cross-device identity — the integer PK stays internal/FK only), an `updated_at` that bumps on *every* write, and a tombstone row in `sync_deletions` on delete (hard deletes are invisible to sync otherwise). Add these in the same migration that creates the table.
+2. **Writes go through services, and the sync push endpoint reuses those same services** — so nutrition triggers, vault sync, and deferred LLM tasks fire identically whether a write comes from the live API or a flushed outbox. Never add write logic that only the live API path runs.
+3. **Replay must be idempotent.** Server upserts keyed by `sync_uuid` (unknown → INSERT, known → UPDATE). A retried flush must never double-insert or spawn a duplicate LLM analysis.
+4. **Don't fabricate derived fields on iOS.** Nutrition, summaries, workout/analysis, photo descriptions are laptop-computed; offline they show the existing `pending` status and backfill on reconnect. Reuse the existing pending→done flow; do not invent a parallel one.
+5. **Derived/cache tables are laptop-owned, not synced as user data:** `stock_prices`, `weather_cache`, `portfolio_snapshots`. Singletons (`user_profile`, `weather_location`, `heartbeat_config`, `card_preferences`) sync with last-write-wins by `updated_at`.
+6. **Vault sync stays one-way and downstream** (DB → markdown/CSV, fire-and-forget). It may arrive in bursts at reconnect — that's fine; never make vault sync block a write or feed back into the DB.
+7. **Battery:** no polling, no persistent socket, no timer-based reachability. Reachability is passive (`NWPathMonitor`); background sync is OS-budgeted (`BGTaskScheduler`). Reads come from the local mirror, not the network.
+8. **New write endpoints** must be replayable from a queue (carry/accept `sync_uuid`, partial-update with `exclude_unset`). Flag any POST with irreversible side effects in the sync push handler.
+
+When the `docs/cards/HOWTO.md` checklist adds a new card with its own table, that table is "syncable user data" → apply rule 1.
 
 ## Backend Patterns
 - **FastAPI route ordering matters:** place specific string path routes BEFORE generic parameterized routes (e.g., `/items/search` before `/items/{id}`) to avoid path conflicts.

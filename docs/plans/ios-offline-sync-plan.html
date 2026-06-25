@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaori — iOS Offline-First Sync Plan</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1d212b; --ink: #e6e9ef;
+    --muted: #9aa4b2; --line: #2a2f3a; --accent: #6ea8fe; --good: #4ade80;
+    --warn: #fbbf24; --bad: #f87171; --code: #0b0d11;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px 120px; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 6px; }
+  h2 { font-size: 23px; margin: 48px 0 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+  h3 { font-size: 18px; margin: 28px 0 8px; color: #cdd6e4; }
+  h4 { font-size: 15px; margin: 18px 0 6px; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; }
+  p, li { color: var(--ink); }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  code { background: var(--code); padding: 2px 6px; border-radius: 5px; font-size: 13.5px;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; color: #e8c08a; }
+  pre { background: var(--code); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+    overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  pre code { background: none; padding: 0; color: #cbd5e1; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin: 16px 0; }
+  .tldr { background: linear-gradient(180deg, #1b2330, #161b24); border: 1px solid #2c3a52; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 720px){ .grid2 { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; }
+  .tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; font-weight: 600; }
+  .t-rec { background: #14361f; color: var(--good); border: 1px solid #245c36; }
+  .t-warn { background: #3a2e10; color: var(--warn); border: 1px solid #5c4a1f; }
+  .t-bad { background: #3a1717; color: var(--bad); border: 1px solid #5c2727; }
+  .t-info { background: #142a3a; color: var(--accent); border: 1px solid #245060; }
+  .pill { font-size: 11.5px; padding: 1px 7px; border-radius: 4px; font-weight: 700; letter-spacing: .02em; }
+  .p-safe { background:#14361f; color:#6ee7a0; }
+  .p-care { background:#3a2e10; color:#fbbf24; }
+  .p-risk { background:#3a1717; color:#fca5a5; }
+  ul.tight { margin: 6px 0; } ul.tight li { margin: 3px 0; }
+  .callout { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; margin: 14px 0; color: #cdd6e4; }
+  .callout.warn { border-color: var(--warn); }
+  .callout.bad { border-color: var(--bad); }
+  .num { color: var(--accent); font-weight: 700; }
+  .muted { color: var(--muted); }
+  .phase { display:flex; gap:14px; align-items:flex-start; margin: 10px 0; }
+  .phase .badge { flex: 0 0 auto; width: 64px; text-align:center; font-weight:700; font-size:13px;
+    background: var(--panel2); border:1px solid var(--line); border-radius: 8px; padding: 6px 4px; }
+  .gate { font-size: 13px; color: var(--good); }
+  hr.soft { border: none; border-top: 1px dashed var(--line); margin: 22px 0; }
+  .small { font-size: 13px; }
+  .kbd { font-family: "SF Mono", ui-monospace, monospace; font-size: 12.5px; color:#9fb4d6; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Kaori — Offline-First iOS Plan</h1>
+  <p class="sub">How to keep using the app when the laptop is offline, without breaking the vault, the LLM pipeline, or data safety. &nbsp;·&nbsp; Draft v1 · for review</p>
+
+  <div class="panel tldr">
+    <h3 style="margin-top:0">TL;DR — the recommendation in one paragraph</h3>
+    <p style="margin-bottom:8px">Do <b>not</b> reimplement the Python backend in Swift. That would mean maintaining two copies of every business rule forever — and two implementations of "what are the calories for this meal" <em>will</em> drift, which is the opposite of the data-safety you asked for. Instead, make iOS a <b>local-first cache with a durable write queue (an "outbox")</b>. The laptop stays the <b>single brain</b>: all real logic, all LLM, all vault sync live there, unchanged. iOS keeps a local SQLite mirror so reads are instant and offline; writes go into a local outbox + show optimistically in the UI; when the laptop is reachable the outbox flushes to the existing API and iOS pulls back the authoritative results. This is exactly the "iOS cache + Kaori backend" model you landed on at the end of your message — and it matches the three things that are already true in your system: the vault is already a one-way, hours-tolerant mirror; LLM calls are already deferred background tasks; and the iOS app is already a thin client we can extend cleanly.</p>
+    <p style="margin:0" class="small muted">The hard part is <b>not</b> "build a second backend." The hard part is <b>identity &amp; change-tracking</b>: the DB uses auto-increment integer IDs, hard deletes, and has no "what changed since X" primitive. Most of this plan is about fixing that <em>additively</em> on the server so nothing existing breaks.</p>
+  </div>
+
+  <h2>1 · What we're working with today</h2>
+  <div class="grid2">
+    <div class="panel">
+      <h4>iOS app</h4>
+      <ul class="tight small">
+        <li>SwiftUI, iOS 17+, one <code>APIClient</code>, Codable structs mirroring Pydantic.</li>
+        <li><b>No local DB at all.</b> Pure thin client; data re-fetched every load.</li>
+        <li>Offline today = red "server unreachable" banner, writes simply fail. No queue.</li>
+        <li>Well-structured <code>Store</code> layer — a clean seam to insert a local cache.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h4>Backend / DB</h4>
+      <ul class="tight small">
+        <li>SQLite (WAL), ~27 tables, inline schema + idempotent ALTER migrations in <code>database.py</code>.</li>
+        <li><b>Auto-increment integer PKs</b> on nearly everything (only <code>agent_sessions</code> is UUID).</li>
+        <li><b>Hard deletes</b>, CASCADE. No <code>is_deleted</code>, no per-row change log, no device concept.</li>
+        <li>LLM work is already <b>fire-and-forget async</b> (pending → analyzing → done).</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h4>Vault coupling <span class="tag t-rec">good news</span></h4>
+      <ul class="tight small">
+        <li>One-way only: DB → markdown/CSV in the vault. <b>No reverse flow, no conflicts.</b></li>
+        <li>Fire-and-forget; failure never breaks a write. Hours of lag is fine.</li>
+        <li>Only direct DB reader outside the backend: <code>cosplay_progress.py</code>, run on demand.</li>
+        <li>⇒ Deferring writes to the laptop by hours does <b>not</b> break vault or skills.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h4>API surface</h4>
+      <ul class="tight small">
+        <li>~60 GET reads, ~50 writes; uniform Bearer-token dependency on <code>/api/*</code>.</li>
+        <li>Partial updates already use <code>exclude_unset</code> — safe to merge.</li>
+        <li><b>No "changes since timestamp" endpoint</b> and no batch write. We'll add both.</li>
+        <li>Some POSTs trigger irreversible LLM work — replay must be idempotent.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>2 · The one real decision: cache+outbox vs. a second backend</h2>
+  <table>
+    <tr><th>Dimension</th><th>A · Local-first cache + outbox <span class="tag t-rec">recommended</span></th><th>B · Reimplement backend in Swift</th></tr>
+    <tr><td>Source of truth</td><td>One brain (laptop). iOS mirrors it.</td><td>Two brains that must agree forever.</td></tr>
+    <tr><td>Business logic (nutrition math, feed aggregation, versioned summaries, raw/analysis/override)</td><td>Stays server-side, untouched.</td><td>Re-written in Swift, kept in lockstep with every future Python change.</td></tr>
+    <tr><td>LLM</td><td>Deferred to laptop (already how it works).</td><td>Still deferred to laptop — so you reimplemented everything <em>except</em> the part that actually needs the laptop.</td></tr>
+    <tr><td>Drift / data-safety risk</td><td>Low — iOS never computes authoritative values.</td><td>High — divergent logic silently produces different numbers.</td></tr>
+    <tr><td>Effort</td><td>Bounded: a sync engine + local store.</td><td>Open-ended: every feature built twice, forever.</td></tr>
+    <tr><td>Offline reads</td><td>✅ instant, from local mirror</td><td>✅</td></tr>
+    <tr><td>Offline writes</td><td>✅ queued + optimistic</td><td>✅</td></tr>
+  </table>
+  <div class="callout">Both options give you offline reads <em>and</em> writes. The difference is purely <b>where the authoritative logic lives</b>. Option A keeps it in one place. Your own closing line — "it seems to become an iOS cache and the Kaori backend" — is Option A. The rest of this plan assumes A.</div>
+  <p class="small muted">Note on "functionally identical backend in iOS": you get functional parity for <b>capture and viewing</b> (log a meal, see your feed, edit weight — all offline). You do <b>not</b> reimplement the <b>derived</b> functions (LLM analysis, AI summaries, agent chat) — those legitimately need the laptop and are designed to arrive late. That distinction is what keeps this safe and finite.</p>
+
+  <h2>3 · Target architecture</h2>
+<pre><code>            ┌──────────────────────── iOS device (offline-capable) ───────────────────────┐
+            │                                                                              │
+   UI  ───▶ │  Stores ──▶ Local SQLite mirror (read cache)   ◀── pulls authoritative data │
+            │     │              ▲                                                         │
+            │     └──▶ Outbox (durable queue of writes) ──┐    optimistic write shows now  │
+            └────────────────────────────────────────────┼─────────────────────────────────┘
+                                                          │  flush when reachable
+                                                          ▼
+            ┌─────────────────────── Laptop (the single brain) ───────────────────────────┐
+            │  NEW: /api/sync/push  +  /api/sync/changes      (thin sync layer)            │
+            │  EXISTING: services (nutrition, feed, summaries) · LLM (deferred) · vault     │
+            │  EXISTING DB (SQLite) + additive sync columns (sync_uuid, updated_at, tombstones)│
+            └─────────────────────────────────────────────────────────────────────────────┘
+                                                          │ fire-and-forget (unchanged)
+                                                          ▼
+                                            Vault markdown/CSV  +  cosplay_progress.py</code></pre>
+
+  <h4>The two-tier behavior you described, made precise</h4>
+  <table>
+    <tr><th>State</th><th>Read path</th><th>Write path</th></tr>
+    <tr><td><b>Laptop online</b></td><td>Local mirror for instant paint, then reconcile via <code>/sync/changes</code>.</td><td>Optimistic into mirror + outbox; outbox flushes immediately. Feels live.</td></tr>
+    <tr><td><b>Laptop offline</b></td><td>Local mirror only — full browsing of everything already synced.</td><td>Optimistic into mirror + outbox; outbox holds. LLM fields show "pending".</td></tr>
+    <tr><td><b>Reconnect</b></td><td>Pull <code>/sync/changes</code> → mirror refreshed with authoritative values.</td><td>Outbox flushes in order; server fills LLM/derived fields; vault fires.</td></tr>
+  </table>
+
+  <h2>4 · The hard problems (and how each is solved)</h2>
+
+  <h3>4.1 Identity — the auto-increment problem <span class="tag t-bad">core risk</span></h3>
+  <p>If iOS creates a meal offline, it cannot know the server's integer <code>id</code>. Two devices both minting "id 41" is corruption waiting to happen. Fix: give every syncable row a <b>stable, globally-unique identity that whoever creates it can mint locally</b>.</p>
+  <ul class="tight">
+    <li>Add <code>sync_uuid TEXT UNIQUE</code> (a UUID/ULID) to each syncable table. The integer <code>id</code> stays as the internal/FK key; <code>sync_uuid</code> is the <b>cross-device identity</b>.</li>
+    <li>iOS mints <code>sync_uuid</code> when it creates a row offline and references rows by it locally.</li>
+    <li>On flush, the server does an <b>upsert keyed by <code>sync_uuid</code></b>: unknown → INSERT (assign new int id), known → UPDATE. This makes replay <b>idempotent</b> (a retried flush can't double-insert).</li>
+    <li>Server returns the <code>sync_uuid → id</code> mapping so iOS can resolve foreign keys for children.</li>
+  </ul>
+  <div class="callout warn">Backfill: every existing row gets a <code>sync_uuid</code> generated once at migration time. Purely additive — existing code keeps using integer ids and never reads the new column unless it opts in.</div>
+
+  <h3>4.2 Deletes — hard deletes are invisible to sync <span class="tag t-warn">needs tombstones</span></h3>
+  <p>Today a delete just removes the row. A puller has no way to learn it's gone. Add a <b>tombstone log</b>:</p>
+<pre><code>CREATE TABLE sync_deletions (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type  TEXT NOT NULL,     -- 'meal','weight',...
+  sync_uuid    TEXT NOT NULL,
+  deleted_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);</code></pre>
+  <p>Every delete (server- or iOS-originated) writes a tombstone. <code>/sync/changes</code> returns tombstones so each side can remove the row locally. CASCADE deletes emit tombstones for children too.</p>
+
+  <h3>4.3 "What changed since X" — the missing primitive</h3>
+  <ul class="tight">
+    <li>Ensure <b>every</b> syncable table has <code>updated_at</code> (several already do; add to the rest) and that it bumps on <em>every</em> write.</li>
+    <li><code>GET /api/sync/changes?since=&lt;cursor&gt;</code> returns, per entity type, rows with <code>updated_at &gt; cursor</code> plus tombstones since the cursor. Cursor = a hybrid <code>(updated_at, id)</code> high-water mark to avoid same-timestamp gaps.</li>
+  </ul>
+
+  <h3>4.4 LLM / derived fields — iOS must never fabricate them <span class="tag t-rec">already fits</span></h3>
+  <p>Nutrition numbers, AI summaries, workout analyses, photo descriptions are <b>computed by the laptop</b>. Offline, iOS stores the raw capture and shows the existing <code>pending</code> placeholder (same UX as today's async flow). On flush, the laptop runs analysis and the values arrive on the next <code>/sync/changes</code> pull. <b>No new placeholder concept is needed</b> — it already exists.</p>
+
+  <h3>4.5 Nested writes — workouts → exercises → sets</h3>
+  <p>These must travel as <b>one atomic operation</b> keyed by the parent's <code>sync_uuid</code>, with children carrying their own <code>sync_uuid</code>s and referencing the parent by uuid. The server resolves the whole tree in a single transaction. Same pattern for a meal + its photos.</p>
+
+  <h3>4.6 Photos — bytes can't ride in a JSON queue</h3>
+  <ul class="tight">
+    <li>Offline, the photo is saved to the device and referenced by a <b>local file URL</b> + its <code>sync_uuid</code>.</li>
+    <li>On flush: upload bytes first (multipart, idempotent by <code>sync_uuid</code>), server returns the canonical <code>/photos/…</code> path, then the meal/post write references it.</li>
+    <li>The mirror swaps the local URL for the server path on the next pull. Until then the UI shows the local image — no broken thumbnails.</li>
+  </ul>
+
+  <h3>4.7 What does <em>not</em> sync as user data</h3>
+  <table>
+    <tr><th>Category</th><th>Tables</th><th>Treatment</th></tr>
+    <tr><td>Derived caches</td><td><code>stock_prices</code>, <code>weather_cache</code>, <code>portfolio_snapshots</code></td><td>Laptop-owned. iOS shows last pulled value as stale; never queued.</td></tr>
+    <tr><td>Singletons</td><td><code>user_profile</code>, <code>weather_location</code>, <code>heartbeat_config</code>, <code>card_preferences</code></td><td>Sync, but conflict = last-write-wins by <code>updated_at</code> (trivial — one row).</td></tr>
+    <tr><td>Agent chat</td><td><code>agent_sessions/messages/memory/...</code></td><td>Read history offline from mirror; <b>cannot run a turn offline</b> (needs LLM). Don't try.</td></tr>
+  </table>
+
+  <h3>4.8 Vault &amp; external readers — unchanged</h3>
+  <p>Vault sync stays entirely server-side and fires when the outbox lands. It just becomes slightly more <em>bursty</em> (a batch arrives at reconnect). <code>cosplay_progress.py</code> reads the DB on demand and is latency-tolerant. <b>No changes required to the vault layer.</b></p>
+
+  <h2>5 · Server-side changes — all additive &amp; backward-compatible</h2>
+  <div class="panel">
+    <h4>Schema (one idempotent migration pass in <code>database.py</code>)</h4>
+    <ul class="tight">
+      <li>Add <code>sync_uuid TEXT</code> (UNIQUE, indexed) to each syncable table; backfill existing rows once.</li>
+      <li>Add <code>updated_at</code> where missing; ensure all writes bump it.</li>
+      <li>Create <code>sync_deletions</code> tombstone table.</li>
+      <li>Optional <code>sync_origin TEXT</code> (device id) to suppress echo / aid debugging.</li>
+    </ul>
+    <p class="small muted">Every existing endpoint keeps working untouched — the new columns are ignored by current code paths. This is the same "add column" migration style already in the repo.</p>
+  </div>
+  <div class="panel">
+    <h4>Two new endpoints (a thin <code>api/sync.py</code> router)</h4>
+<pre><code>POST /api/sync/push       # body: ordered list of ops, each with sync_uuid,
+                          #       entity_type, op (create|update|delete), payload.
+                          # Applies idempotently in a transaction per op-group;
+                          # returns {sync_uuid -> id} map + per-op status + conflicts.
+
+GET  /api/sync/changes?since=&lt;cursor&gt;[&amp;types=meal,weight,...]
+                          # returns upserts (rows updated_at &gt; cursor) + tombstones,
+                          # plus a new cursor high-water mark.</code></pre>
+    <p class="small muted">Internally these call the <b>existing services</b> (so nutrition triggers, vault sync, LLM tasks all fire exactly as they do for the live API). The sync layer is glue, not new business logic.</p>
+  </div>
+
+  <h2>6 · iOS-side components (new)</h2>
+  <table>
+    <tr><th>Component</th><th>Responsibility</th></tr>
+    <tr><td><b>Local store</b> (GRDB or SQLite.swift)</td><td>Mirror of synced tables + an <code>outbox</code> table. Mirror schema mirrors the server's syncable tables, keyed by <code>sync_uuid</code>.</td></tr>
+    <tr><td><b>Outbox</b></td><td>Durable, ordered queue of pending ops with retry/backoff and a state (<span class="pill p-care">pending</span> → <span class="pill p-safe">acked</span> / <span class="pill p-risk">conflict</span>).</td></tr>
+    <tr><td><b>SyncEngine</b></td><td>On reachability/foreground: flush outbox → then pull <code>/sync/changes</code> → update mirror + cursor. Single-flight, idempotent.</td></tr>
+    <tr><td><b>Reachability</b></td><td>Detect laptop reachable (Tailscale/LAN). Drives online/offline mode.</td></tr>
+    <tr><td><b>Store refactor</b></td><td>Existing <code>MealStore</code> etc. read from the mirror and write through the outbox, instead of calling <code>APIClient</code> directly. Views unchanged.</td></tr>
+  </table>
+  <p class="small muted">Because the <code>Store</code> layer already centralizes data access, Views barely change — they keep observing the same stores.</p>
+
+  <h2>7 · Conflict policy (single user ⇒ simple)</h2>
+  <ul class="tight">
+    <li><b>Inserts</b> (the common offline case — new meals/weights) never conflict; they're new <code>sync_uuid</code>s.</li>
+    <li><b>Edits to the same row on both sides</b> (rare for one person): <b>last-write-wins by <code>updated_at</code></b>, but the server <b>never accepts a stale overwrite</b> (if server's <code>updated_at</code> &gt; incoming base, mark the op <code>conflict</code> and let iOS re-pull + re-apply on top). The raw/analysis/override audit trail means we lose nothing irrecoverable.</li>
+    <li><b>Delete vs edit</b>: delete wins (tombstone), edit dropped — surfaced to the user, not silent.</li>
+  </ul>
+
+  <h2>8 · Phased rollout — each phase ships independently &amp; is reversible</h2>
+
+  <div class="phase"><div class="badge">Phase 0</div><div>
+    <b>Server sync metadata — zero behavior change.</b> Add <code>sync_uuid</code> / <code>updated_at</code> / tombstones; backfill. Ship. App still behaves identically.
+    <div class="gate">✔ Gate: full backup first; verify every existing endpoint + the vault sync still pass before/after. <span class="muted">100% reversible (drop columns).</span></div>
+  </div></div>
+
+  <div class="phase"><div class="badge">Phase 1</div><div>
+    <b>Read replica only (no offline writes yet).</b> Build the local mirror + <code>/sync/changes</code> pull. iOS still writes through the live API when online. This battle-tests the sync engine with <b>zero write risk</b>.
+    <div class="gate">✔ Gate: mirror matches server for a week of real use; offline browsing works.</div>
+  </div></div>
+
+  <div class="phase"><div class="badge">Phase 2</div><div>
+    <b>Outbox for the safe, simple card types first:</b> weight, posts, reminders, profile — flat rows, latency-tolerant, no nested children, idempotent. Prove the full offline→reconnect→flush loop end-to-end.
+    <div class="gate">✔ Gate: airplane-mode test — log offline, reconnect, confirm laptop + vault + mirror all converge.</div>
+  </div></div>
+
+  <div class="phase"><div class="badge">Phase 3</div><div>
+    <b>The heavy flows:</b> meals (+ photos + deferred LLM nutrition), workouts (nested exercises/sets), documents/finance imports. These exercise atomic trees, photo upload, and idempotent LLM replay.
+    <div class="gate">✔ Gate: offline meal with photo → reconnect → nutrition fills in, vault entry appears, no duplicate analysis.</div>
+  </div></div>
+
+  <div class="phase"><div class="badge">Phase 4</div><div>
+    <b>Polish:</b> conflict surfacing UI, background-task flush, large-backfill chunking, telemetry on outbox depth.
+  </div></div>
+
+  <h2>9 · Data-safety guarantees baked in</h2>
+  <ul class="tight">
+    <li><b>Laptop DB is canonical</b> — iOS proposes, the server disposes. iOS never writes authoritative/derived values.</li>
+    <li><b>Idempotent replay</b> via <code>sync_uuid</code> upserts — a retried flush can't duplicate.</li>
+    <li><b>Additive migrations</b> — Phase 0 is reversible; existing endpoints/vault untouched.</li>
+    <li><b>Test mode</b> — the existing <code>POST /api/test-mode/fork</code> lets us build and validate the entire sync layer against a forked DB before touching real data.</li>
+    <li><b>No silent loss</b> — conflicts and dropped edits are surfaced; the analysis/override audit trail preserves history.</li>
+    <li><b>Vault is downstream &amp; one-way</b> — worst case it's hours stale, which it already tolerates.</li>
+  </ul>
+
+  <h2>10 · Non-goals (explicitly out of scope)</h2>
+  <ul class="tight">
+    <li>Running Python or any LLM on the phone. (Not possible / not desired.)</li>
+    <li>Offline agent chat turns, offline AI summaries, offline meal analysis numbers — these are deferred, not replicated.</li>
+    <li>Multi-user / true concurrent-editor CRDT machinery — overkill for one person on two devices.</li>
+    <li>A second authoritative implementation of business logic in Swift.</li>
+  </ul>
+
+  <h2>11 · Battery &amp; resource budget <span class="tag t-rec">net lighter than today</span></h2>
+  <p>Offline capability must not cost battery. Done right, Option A is <b>cheaper than the current app</b>, because reads stop hitting the network.</p>
+  <ul class="tight">
+    <li><b>Reads are local.</b> Today every screen load round-trips to the laptop and wakes the radio. With the mirror, feed/meals/etc. read from on-device SQLite — no radio, no network. This removes most of the app's current battery cost.</li>
+    <li><b>No polling.</b> We never run a timer asking "is the laptop up?". Reachability comes from the OS's free <code>NWPathMonitor</code> callback — iOS already tracks the network and hands us the event.</li>
+    <li><b>No retry storms.</b> While the laptop is unreachable the outbox just sits in SQLite costing nothing. No background retries hammering the radio; we don't attempt a flush until the OS reports network is back.</li>
+    <li><b>No persistent socket / no push connection</b> to the laptop.</li>
+    <li><b>Sync runs only on cheap triggers:</b> (1) app foreground, (2) a user write while online, (3) an OS-granted <code>BGTaskScheduler</code> refresh — which iOS only schedules when it's already cheap (typically Wi-Fi and/or charging). The app already has this plumbing in <code>BackgroundTaskManager</code>.</li>
+    <li><b>Reconnect = one short burst</b> (flush queue once, pull changes once), bounded and brief, happening when you're back on a network anyway.</li>
+  </ul>
+  <div class="callout">Principle: <b>passive reachability + opportunistic, OS-budgeted sync + a queue that costs nothing while it waits.</b> No timers, no polling, no open sockets, no foreground network for reads.</div>
+
+  <h2>12 · Open decisions I need from you</h2>
+  <div class="panel">
+    <ol>
+      <li><b>Confirm Option A</b> (cache + outbox, laptop = single brain) vs. a literal second Swift backend. I strongly recommend A.</li>
+      <li><b>First offline card types</b> — I propose weight + posts + reminders for Phase 2. Agree, or is logging <em>meals</em> offline the must-have that should come first (more work, but it's the core use case)?</li>
+      <li><b>Reachability definition</b> — is the laptop always reached over Tailscale, or also bare LAN? Affects how we detect "online".</li>
+      <li><b>Conflict visibility</b> — okay with last-write-wins + surfacing the rare conflict, or do you want every conflict to block and ask?</li>
+      <li><b>Sync library on iOS</b> — GRDB (richer, observation built-in) vs. SQLite.swift (lighter). I lean GRDB.</li>
+    </ol>
+  </div>
+
+  <p class="muted small" style="margin-top:40px">Next step after you pick a direction: I'll write the detailed Phase 0 spec (exact tables + columns + migration + the two endpoint contracts) and a parallel iOS component spec — then implement Phase 0 against a forked test DB so nothing real is at risk.</p>
+
+</div>
+</body>
+</html>

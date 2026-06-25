@@ -15,6 +15,8 @@ This affects how the feed loader and iOS `applyFeedResponse` work (see below).
 
 ## Adding a New Card Type
 
+> ⚠️ **Sync coordination:** if the new card has its own DB table, it is "syncable user data." Give the table `sync_uuid TEXT UNIQUE` + `updated_at` (bumped on every write) + a `sync_deletions` tombstone on delete, and route its writes through services so the sync push path reuses them. See the **Offline-First Sync** section in `CLAUDE.md` (and `docs/plans/ios-offline-sync-plan.html`).
+
 ### Files to CREATE (4 backend + 2-4 iOS)
 
 **Backend:**
