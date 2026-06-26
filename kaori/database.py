@@ -578,6 +578,12 @@ async def _migrate_sync_metadata(db: aiosqlite.Connection):
                 await db.execute(
                     f"UPDATE {table} SET updated_at = datetime('now') WHERE updated_at IS NULL"
                 )
+        # Index updated_at so the iOS sync pull (WHERE updated_at >= cursor) seeks
+        # instead of full-scanning each syncable table on every incremental pull.
+        await db.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_updated_at_{table} "
+            f"ON {table}(updated_at)"
+        )
 
         # 3. Triggers maintain the invariants for ALL writers (repos untouched):
         #    _ins: assign a uuid + stamp updated_at when the caller supplies no uuid.
